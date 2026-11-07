@@ -4209,7 +4209,7 @@ struct MainStudioView: View {
             }
             .padding(14)
         }
-        .contentMargins(.vertical, 6, for: .scrollIndicators)
+        .compatScrollIndicatorMargins(.vertical, 6)
     }
 
     @ViewBuilder
@@ -5312,7 +5312,7 @@ struct MainStudioView: View {
             .frame(maxWidth: 1180)
             .frame(maxWidth: .infinity)
         }
-        .contentMargins(.vertical, 6, for: .scrollIndicators)
+        .compatScrollIndicatorMargins(.vertical, 6)
     }
 
     // MARK: - ComfyUI 云端节点视频工作台与 Google Drive 软链持久化面板
@@ -6677,7 +6677,7 @@ struct MainStudioView: View {
                     }
                     .padding(.trailing, 2)
                 }
-                .contentMargins(.vertical, 2, for: .scrollIndicators)
+                .compatScrollIndicatorMargins(.vertical, 2)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .frame(height: 330)
             }
@@ -6754,7 +6754,7 @@ struct MainStudioView: View {
                     .padding(12)
                 }
                 .environment(\.colorScheme, .dark)
-                .contentMargins(4, for: .scrollIndicators)
+                .compatScrollIndicatorMargins(.all, 4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
@@ -6770,7 +6770,7 @@ struct MainStudioView: View {
                         proxy.scrollTo(vm.liveConsoleLines.count - 1, anchor: .bottom)
                     }
                 }
-                .onChange(of: vm.liveConsoleLines) { _, newLines in
+                .compatOnChange(of: vm.liveConsoleLines) { newLines in
                     if !newLines.isEmpty {
                         proxy.scrollTo(newLines.count - 1, anchor: .bottom)
                     }
@@ -6778,6 +6778,28 @@ struct MainStudioView: View {
             }
         }
         .padding(12)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func compatScrollIndicatorMargins(_ edges: Edge.Set = .all, _ length: CGFloat) -> some View {
+        if #available(macOS 14.0, *) {
+            self.contentMargins(edges, length, for: .scrollIndicators)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func compatOnChange<V: Equatable>(of value: V, perform action: @escaping (V) -> Void) -> some View {
+        if #available(macOS 14.0, *) {
+            self.onChange(of: value) { _, newValue in
+                action(newValue)
+            }
+        } else {
+            self.onChange(of: value, perform: action)
+        }
     }
 }
 

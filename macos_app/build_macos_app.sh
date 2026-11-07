@@ -123,16 +123,36 @@ SWIFT_ICON
 iconutil -c icns "${ICONSET_DIR}" -o "${RESOURCES_DIR}/AppIcon.icns"
 rm -rf "${ICONSET_DIR}"
 
-# 3. 编译原生 SwiftUI macOS 可执行程序
-echo "Compiling SwiftUI native macOS app (${APP_NAME})..."
+# 3. 编译原生 SwiftUI macOS 通用可执行程序 (兼容 macOS 13.0+ Ventura/Sonoma/Sequoia/Tahoe/27 及 Apple Silicon + Intel)
+echo "Compiling SwiftUI native macOS Universal app (${APP_NAME}, target macOS 13.0+)..."
 swiftc -O \
+    -target arm64-apple-macos13.0 \
     -parse-as-library \
     -framework SwiftUI \
     -framework AppKit \
     -framework AVKit \
     -framework UniformTypeIdentifiers \
     "${SCRIPT_DIR}/EasyColabStudio.swift" \
-    -o "${MACOS_DIR}/${EXEC_NAME}"
+    -o "${MACOS_DIR}/${EXEC_NAME}_arm64"
+
+if swiftc -O \
+    -target x86_64-apple-macos13.0 \
+    -parse-as-library \
+    -framework SwiftUI \
+    -framework AppKit \
+    -framework AVKit \
+    -framework UniformTypeIdentifiers \
+    "${SCRIPT_DIR}/EasyColabStudio.swift" \
+    -o "${MACOS_DIR}/${EXEC_NAME}_x86_64" 2>/dev/null; then
+    lipo -create -output "${MACOS_DIR}/${EXEC_NAME}" \
+        "${MACOS_DIR}/${EXEC_NAME}_arm64" \
+        "${MACOS_DIR}/${EXEC_NAME}_x86_64"
+    rm -f "${MACOS_DIR}/${EXEC_NAME}_arm64" "${MACOS_DIR}/${EXEC_NAME}_x86_64"
+    echo "✅ Built Universal Binary (arm64 + x86_64, minos 13.0)"
+else
+    mv -f "${MACOS_DIR}/${EXEC_NAME}_arm64" "${MACOS_DIR}/${EXEC_NAME}"
+    echo "✅ Built arm64 Binary (minos 13.0)"
+fi
 
 # 4. 本地签名并刷新 macOS LaunchServices 图标缓存
 codesign --force --deep --sign - "${BUNDLE_DIR}"
