@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Compiled macOS Application Bundles & Archives (publish via GitHub Releases)
+*.app/
+*.dmg
+*.zip
+*.pkg
+
+# Python Virtual Environments & Bytecode
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Secrets, Tokens & Local Credentials (NEVER commit)
+.env
+.env.*
+*token*.json
+*oauth*.json
+*credentials*.json
+pkce_verifier.txt
+
+# Local Generated Media & Temporary Outputs
+outputs/
+models/
+*.mp4
+*.mov
+*.wav
+*.gguf
+*.safetensors
