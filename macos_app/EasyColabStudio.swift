@@ -567,6 +567,7 @@ struct ColabJobResponse: Codable {
 struct BridgeAuthStatusResponse: Codable {
     var ok: Bool?
     var logged_in: Bool?
+    var email: String?
     var paid_balance: Double?
     var burn_rate_hourly: Double?
     var active_assignments: Int?
@@ -804,9 +805,22 @@ class StudioViewModel: ObservableObject {
 
     // Colab CLI 唤醒与真实账本状态
     @Published var cliLoggedIn: Bool = false
+    @Published var accountEmail: String = ""
     @Published var showOAuthCodeInput: Bool = false
     @Published var oauthCodeText: String = ""
     @Published var officialCUBalance: Double? = nil
+
+    var displayAccountLabel: String {
+        guard cliLoggedIn else { return "未绑定" }
+        let raw = accountEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return "已连接" }
+        if maskServerURL, let atIdx = raw.firstIndex(of: "@") {
+            let prefix = String(raw[..<atIdx].prefix(2))
+            let domain = String(raw[atIdx...])
+            return "\(prefix)•••\(domain)"
+        }
+        return raw
+    }
     @Published var officialBurnRate: Double? = nil
     @Published var activeVMCount: Int = 0
     @Published var wakeGPUChoice: String = {
@@ -1477,6 +1491,11 @@ class StudioViewModel: ObservableObject {
             return
         }
         cliLoggedIn = decoded.logged_in ?? false
+        if let em = decoded.email, !em.isEmpty {
+            accountEmail = em
+        } else if !cliLoggedIn {
+            accountEmail = ""
+        }
         if let bal = decoded.paid_balance {
             officialCUBalance = bal
             totalBudgetCU = bal
@@ -1490,7 +1509,7 @@ class StudioViewModel: ObservableObject {
         }
     }
 
-    func startGoogleOAuthLogin() async {
+    func startGoogleOAuthLogin(switchingAccount: Bool = false) async {
         let out = await runBridgeCommand(["auth_url"], installIfMissing: true)
         guard let data = out.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1501,14 +1520,32 @@ class StudioViewModel: ObservableObject {
             }
             return
         }
+        oauthCodeText = ""
         showOAuthCodeInput = true
         NSWorkspace.shared.open(url)
-        statusMessage = "已在浏览器打开 Google 授权页，请允许访问后粘贴授权码。"
+        statusMessage = switchingAccount
+            ? "已在浏览器打开 Google 账号选择页，请选择新账号授权并粘贴授权码（点取消可保留原账号）。"
+            : "已在浏览器打开 Google 授权页，请允许访问后粘贴授权码。"
+    }
+
+    func logoutGoogleAccount() async {
+        _ = await runBridgeCommand(["auth_logout"], installIfMissing: false)
+        cliLoggedIn = false
+        accountEmail = ""
+        showOAuthCodeInput = false
+        oauthCodeText = ""
+        officialCUBalance = nil
+        officialBurnRate = nil
+        activeVMCount = 0
+        colabServerURL = ""
+        resetStaleRemoteRuntimeState(reason: "已退出当前 Google 账号绑定；可点击左侧「绑定」登录其他账号。")
     }
 
     func submitGoogleOAuthCode() async {
         let code = oauthCodeText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !code.isEmpty else { return }
+        let prevEmail = accountEmail
+        let wasLoggedIn = cliLoggedIn
         statusMessage = "正在验证授权码并同步账户余额..."
         let out = await runBridgeCommand(["auth_code", code], installIfMissing: true)
         guard let data = out.data(using: .utf8),
@@ -1517,13 +1554,23 @@ class StudioViewModel: ObservableObject {
             return
         }
         if decoded.logged_in == true {
+            let newEmail = decoded.email ?? ""
+            if wasLoggedIn && (prevEmail != newEmail || !colabServerURL.isEmpty) {
+                colabServerURL = ""
+                resetStaleRemoteRuntimeState(reason: "")
+            }
             cliLoggedIn = true
+            accountEmail = newEmail
             showOAuthCodeInput = false
             oauthCodeText = ""
             officialCUBalance = decoded.paid_balance
             officialBurnRate = decoded.burn_rate_hourly
             activeVMCount = decoded.active_assignments ?? 0
-            statusMessage = "Google 账号绑定成功！可用额度: \(String(format: "%.2f", decoded.paid_balance ?? 0)) CU"
+            if let bal = decoded.paid_balance {
+                totalBudgetCU = bal
+            }
+            let emailTag = newEmail.isEmpty ? "" : " (\(displayAccountLabel))"
+            statusMessage = "Google 账号绑定成功\(emailTag)！可用额度: \(String(format: "%.2f", decoded.paid_balance ?? 0)) CU"
         } else {
             statusMessage = "授权码无效: \(decoded.error ?? "请重新获取")"
         }
@@ -4214,17 +4261,40 @@ struct MainStudioView: View {
 
     @ViewBuilder
     private var colabConnectionRows: some View {
-        HStack {
+        HStack(spacing: 6) {
             Text("Google 账号")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Spacer()
-            Text(vm.cliLoggedIn ? "已连接" : "未绑定")
-                .font(.callout.weight(.medium))
+            Spacer(minLength: 4)
+            Text(vm.displayAccountLabel)
+                .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(vm.cliLoggedIn ? Color.green : Color.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(vm.accountEmail.isEmpty ? "当前 Google 账号状态" : vm.displayAccountLabel)
+
             if vm.cliLoggedIn {
                 Button("刷新") { Task { await vm.refreshOfficialColabAccountUsage() } }
                     .controlSize(.small)
+
+                Menu {
+                    Button {
+                        Task { await vm.startGoogleOAuthLogin(switchingAccount: true) }
+                    } label: {
+                        Label("切换 Google 账号...", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        Task { await vm.logoutGoogleAccount() }
+                    } label: {
+                        Label("退出当前账号", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                } label: {
+                    Text("换号")
+                }
+                .controlSize(.small)
+                .fixedSize()
+                .help("切换其他 Google 账号或退出当前绑定")
             } else {
                 Button("绑定") { Task { await vm.startGoogleOAuthLogin() } }
                     .controlSize(.small)
@@ -4238,6 +4308,11 @@ struct MainStudioView: View {
                 Button("确认") { Task { await vm.submitGoogleOAuthCode() } }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                Button("取消") {
+                    vm.showOAuthCodeInput = false
+                    vm.oauthCodeText = ""
+                }
+                .controlSize(.small)
             }
         }
 

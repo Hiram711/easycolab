@@ -79,13 +79,65 @@ def _has_valid_token() -> bool:
 
 
 PKCE_VERIFIER_PATH = os.path.expanduser("~/.config/colab-cli/pkce_verifier.txt")
+ACCOUNT_PROFILE_CACHE_PATH = os.path.expanduser("~/.config/colab-cli/account_profile.json")
+
+
+def _clear_local_session_store():
+    """切换或退出 Google 账号时，清理本地缓存的旧账号 Colab 会话记录"""
+    try:
+        existing = state.store.list()
+        if isinstance(existing, dict):
+            for name in list(existing.keys()):
+                state.store.remove(name)
+    except Exception:
+        pass
+    state._client = None
+    state._sessions = None
+
+
+def _get_account_email() -> str:
+    """获取当前绑定 Google 账号邮箱（按 refresh_token 指纹本地缓存，避免重复请求）"""
+    if not os.path.exists(TOKEN_CONFIG_PATH):
+        return ""
+    try:
+        creds = Credentials.from_authorized_user_file(TOKEN_CONFIG_PATH, PUBLIC_SCOPES)
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(TOKEN_CONFIG_PATH, "w") as f:
+                f.write(creds.to_json())
+        tok_fp = (creds.refresh_token or creds.token or "")[-20:]
+        if tok_fp and os.path.exists(ACCOUNT_PROFILE_CACHE_PATH):
+            try:
+                with open(ACCOUNT_PROFILE_CACHE_PATH, "r", encoding="utf-8") as cf:
+                    cached = json.load(cf)
+                if cached.get("fp") == tok_fp and cached.get("email"):
+                    return str(cached["email"])
+            except Exception:
+                pass
+        if creds and creds.token:
+            r = requests.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {creds.token}"},
+                timeout=5,
+            )
+            if r.status_code == 200:
+                email = str(r.json().get("email") or "").strip()
+                if email and tok_fp:
+                    os.makedirs(os.path.dirname(ACCOUNT_PROFILE_CACHE_PATH), exist_ok=True)
+                    with open(ACCOUNT_PROFILE_CACHE_PATH, "w", encoding="utf-8") as cf:
+                        json.dump({"fp": tok_fp, "email": email}, cf)
+                return email
+    except Exception:
+        pass
+    return ""
 
 
 def cmd_auth_url():
     client_config = _load_client_config()
     flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
     flow.redirect_uri = REMOTE_REDIRECT_URI
-    auth_url, _ = flow.authorization_url(prompt="consent", token_usage="remote")
+    # 显式传入 select_account consent，强制弹出 Google 多账号选择器以支持自由切换账号
+    auth_url, _ = flow.authorization_url(prompt="select_account consent", token_usage="remote")
     os.makedirs(os.path.dirname(PKCE_VERIFIER_PATH), exist_ok=True)
     if getattr(flow, "code_verifier", None):
         with open(PKCE_VERIFIER_PATH, "w") as f:
@@ -103,12 +155,30 @@ def cmd_auth_code(code: str):
                 flow.code_verifier = f.read().strip()
         flow.fetch_token(code=code.strip())
         creds = flow.credentials
+        _clear_local_session_store()
+        for p in (ACCOUNT_PROFILE_CACHE_PATH, PKCE_VERIFIER_PATH):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
         os.makedirs(os.path.dirname(TOKEN_CONFIG_PATH), exist_ok=True)
         with open(TOKEN_CONFIG_PATH, "w") as f:
             f.write(creds.to_json())
         return cmd_auth_status()
     except Exception as e:
         print(json.dumps({"ok": False, "logged_in": False, "error": str(e)}))
+
+
+def cmd_auth_logout():
+    _clear_local_session_store()
+    for p in (TOKEN_CONFIG_PATH, PKCE_VERIFIER_PATH, ACCOUNT_PROFILE_CACHE_PATH):
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+    print(json.dumps({"ok": True, "logged_in": False, "email": ""}))
 
 
 def _safe_sync_sessions():
@@ -141,9 +211,11 @@ def cmd_auth_status():
                 "shape": a.machine_shape.name,
             })
 
+        email = _get_account_email()
         print(json.dumps({
             "ok": True,
             "logged_in": True,
+            "email": email,
             "paid_balance": round(float(info.paid_compute_units_balance), 2),
             "burn_rate_hourly": round(float(info.consumption_rate_hourly), 2),
             "active_assignments": int(info.assignments_count),
@@ -153,6 +225,7 @@ def cmd_auth_status():
         print(json.dumps({
             "ok": False,
             "logged_in": True,
+            "email": _get_account_email(),
             "error": str(e),
         }))
 
@@ -704,6 +777,7 @@ def main():
 
     sub.add_parser("auth_status")
     sub.add_parser("auth_url")
+    sub.add_parser("auth_logout")
 
     p_code = sub.add_parser("auth_code")
     p_code.add_argument("code", type=str)
@@ -724,6 +798,8 @@ def main():
         cmd_auth_status()
     elif args.cmd == "auth_url":
         cmd_auth_url()
+    elif args.cmd == "auth_logout":
+        cmd_auth_logout()
     elif args.cmd == "auth_code":
         cmd_auth_code(args.code)
     elif args.cmd == "wake":
