@@ -4,14 +4,18 @@
 .LSOverride
 ._*
 
-# Compiled macOS Application Bundles & Archives (publish via GitHub Releases)
+# Compiled macOS & Windows Application Bundles / Archives (publish via GitHub Releases)
 *.app/
 *.dmg
 *.zip
 *.pkg
+*.exe
+build/
+dist/
 
 # Python Virtual Environments & Bytecode
 .venv/
+.venv_win/
 venv/
 ENV/
 __pycache__/

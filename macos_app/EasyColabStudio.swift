@@ -4,6 +4,185 @@ import AppKit
 import UniformTypeIdentifiers
 import ObjectiveC.runtime
 
+// MARK: - 中英文国际化语言管理 (默认简体中文 "zh")
+
+enum AppLanguage: String, CaseIterable {
+    case zh = "zh"
+    case en = "en"
+}
+
+extension Notification.Name {
+    static let easyColabLanguageDidChange = Notification.Name("EasyColab.LanguageDidChange")
+}
+
+final class LanguageManager: ObservableObject {
+    static let shared = LanguageManager()
+
+    @Published var lang: AppLanguage {
+        didSet {
+            UserDefaults.standard.set(lang.rawValue, forKey: "appLanguage")
+            if oldValue != lang {
+                NotificationCenter.default.post(name: .easyColabLanguageDidChange, object: nil)
+            }
+        }
+    }
+
+    var isEN: Bool { lang == .en }
+
+    private init() {
+        if UserDefaults.standard.string(forKey: "appLanguage") == "en" {
+            self.lang = .en
+        } else {
+            self.lang = .zh
+        }
+    }
+
+    func toggle() {
+        lang = (lang == .zh) ? .en : .zh
+    }
+}
+
+@inline(__always)
+func L(_ zh: String, _ en: String) -> String {
+    LanguageManager.shared.lang == .en ? en : zh
+}
+
+func localizeModelFileDesc(_ raw: String) -> String {
+    guard LanguageManager.shared.isEN, !raw.isEmpty else { return raw }
+    var s = raw
+    s = s.replacingOccurrences(of: " [RAM内存盘]", with: " [RAM Disk]")
+    s = s.replacingOccurrences(of: "DiT 音视频主干 BF16", with: "DiT Audio-Video Backbone BF16")
+    s = s.replacingOccurrences(of: "多模态编码器 BF16", with: "Multimodal Encoder BF16")
+    s = s.replacingOccurrences(of: "3D 视频 VAE BF16", with: "3D Video VAE BF16")
+    s = s.replacingOccurrences(of: "32kHz 立体声 VAE BF16", with: "32kHz Stereo Audio VAE BF16")
+    s = s.replacingOccurrences(of: "权重分片", with: "Weight Shard")
+    s = s.replacingOccurrences(of: "Unsloth UD-Q4_K_M 主模型", with: "Unsloth UD-Q4_K_M Main Model")
+    s = s.replacingOccurrences(of: "多模态视觉投影器", with: "Multimodal Vision Projector")
+    s = s.replacingOccurrences(of: "Unsloth MTP 多词元投机解码头", with: "Unsloth MTP Speculative Decoding Head")
+    s = s.replacingOccurrences(of: "编码器", with: "Encoder")
+    s = s.replacingOccurrences(of: "图像 VAE", with: "Image VAE")
+    return s
+}
+
+func localizeServerText(_ text: String) -> String {
+    guard LanguageManager.shared.isEN, !text.isEmpty else { return text }
+
+    let exactMap: [String: String] = [
+        "未加载": "Not Loaded",
+        "未连接 Colab 服务端": "Colab Server Disconnected",
+        "尚未启动云端 ComfyUI 工作台": "Cloud ComfyUI Studio Not Started",
+        "尚未启动（支持一键拉起 ComfyUI + Google Drive 自动软链持久化）": "Not started (1-click ComfyUI + Google Drive auto-symlink persistence ready)",
+        "Google Drive 自动软链持久化": "Google Drive Auto-Symlink Persistence",
+        "Google Drive 实时软链挂载": "Google Drive Live Symlink Mount",
+        "Google Drive 云盘自动持久化": "Google Drive Auto-Persistence",
+        "实例本地高速存储": "Instance Local NVMe Storage",
+        "就绪：默认已选 G4 (RTX PRO 6000 · 96GB)，可在左侧一键唤醒实例并部署模型。": "Ready: G4 (RTX PRO 6000 · 96GB) selected by default. Wake & deploy from the left sidebar.",
+        "已彻底释放全部云端实例，计费速率归零。": "All cloud Colab instances terminated. Billing rate is now 0 CU/h.",
+        "正在初始化 ComfyUI 环境与 Google Drive 持久化目录...": "Initializing ComfyUI environment & Google Drive persistence folders...",
+        "正在释放现有常驻模型显存，为 ComfyUI 腾出完整 96GB 空间...": "Releasing resident models from VRAM to free full 96GB for ComfyUI...",
+        "正在从 Google Drive 恢复历史持久化的 ComfyUI 节点、模型与工作流...": "Restoring persisted ComfyUI nodes, models & workflows from Google Drive...",
+        "正在克隆官方最新 ComfyUI 核心引擎...": "Cloning latest official ComfyUI core engine...",
+        "正在安装 ComfyUI 核心依赖（保留当前 G4 Blackwell CUDA PyTorch）...": "Installing ComfyUI core dependencies (preserving G4 Blackwell CUDA PyTorch)...",
+        "正在恢复已持久化的自定义节点并配置 ComfyUI-Manager...": "Restoring persisted custom nodes & configuring ComfyUI-Manager...",
+        "正在检查并安装已保存自定义节点的 Python 依赖包...": "Checking & installing Python packages for saved custom nodes...",
+        "正在拉起 ComfyUI 节点推理引擎 (端口 8188)...": "Starting ComfyUI node inference engine (Port 8188)...",
+        "ComfyUI 内核已就绪，正在建立 Cloudflare 高速全屏画布隧道...": "ComfyUI engine ready. Opening Cloudflare Quick Tunnel for fullscreen canvas...",
+        "ComfyUI 已停止（节点、模型与工作流已持久化保存至 Google Drive）": "ComfyUI stopped (nodes, models & workflows persisted to Google Drive)",
+        "正在先从 Google Drive 检查已持久化的历史模型权重...": "Checking Google Drive for previously persisted model weights...",
+        "正在将配齐的模型与中文工作流持久化同步至 Google Drive...": "Syncing installed models & workflow templates to Google Drive...",
+        "正在预装并校验 llama.cpp CUDA 高速推理引擎...": "Installing & verifying llama.cpp CUDA inference engine...",
+        "正在映射 MiniMax-H3 BF16 多模态编码器权重 (14 分片)...": "Mapping MiniMax-H3 BF16 multimodal encoder weights (14 shards)...",
+        "正在映射 MiniMax-H3 BF16 33B DiT 主干权重 (13 分片)...": "Mapping MiniMax-H3 BF16 33B DiT backbone weights (13 shards)...",
+        "正在映射 3D 视频 VAE 与 32kHz 立体声 VAE 权重...": "Mapping 3D Video VAE & 32kHz Stereo Audio VAE weights...",
+        "正在构建 MiniMax-H3 BF16 原生 GPU 计算图与 Processor...": "Building MiniMax-H3 native BF16 GPU computation graph & processor...",
+        "正在映射 Qwen-Image-2.1 权重并构建 GPU 管线...": "Mapping Qwen-Image-2.1 weights & building GPU pipeline...",
+        "正在映射 Z-Image-Turbo 权重并构建 8 步极速生图管线...": "Mapping Z-Image-Turbo weights & building 8-step turbo pipeline...",
+        "正在预热 Qwen3.8-27B-UD-Q4_K_M.gguf 与 mmproj 视觉权重...": "Warming up Qwen3.8-27B-UD-Q4_K_M.gguf & mmproj vision weights...",
+        "正在自动补齐 Unsloth MTP 投机解码加速头 (1.31 GB)...": "Downloading Unsloth MTP speculative decoding head (1.31 GB)...",
+        "正在上传最新多模型开源服务端代码 (app.py)...": "Uploading latest multi-model server engine (app.py)...",
+        "正在云端配置 Google Drive 持久化、多模型引擎并启动隧道 (约需 40~90 秒)...": "Configuring Google Drive persistence, multi-model engine & public tunnel (~40–90s)...",
+        "正在克隆 DiffSynth-Studio...": "Cloning DiffSynth-Studio...",
+        "容器仍在初始化，继续尝试连接内核...": "Container still initializing, retrying kernel connection...",
+        "旧实例已失效或正在销毁，正在自动清理并重新分配新实例...": "Previous runtime expired; cleaning up and provisioning a fresh GPU instance...",
+        "已手动停止当前推理任务": "Inference cancelled by user",
+        "首尾帧模式下请至少提供首帧或尾帧图片": "Please provide at least a start frame or end frame image in First/Last Frame mode",
+        "图像编辑/重绘模式下请至少拖入一张输入图片": "Please drop at least one reference image in Image Edit / Restyle mode"
+    ]
+    if let exact = exactMap[text] {
+        return exact
+    }
+
+    var s = localizeModelFileDesc(text)
+    let replacements: [(String, String)] = [
+        ("已无缝接管在线 ComfyUI 画布", "Connected to active ComfyUI canvas"),
+        ("ComfyUI 进程已退出", "ComfyUI process exited"),
+        ("，可点击重新启动", "; click to restart"),
+        ("正在建立 ", "Linking "),
+        (" 目录软链", " symlinks"),
+        ("正在准备配齐「", "Preparing preset pack \""),
+        ("正在生成「", "Generating workflow templates for \""),
+        ("」全中文三步傻瓜注释工作流...", "\"..."),
+        ("」（共 ", "\" ("),
+        (" 个官方权重）...", " official weights)..."),
+        ("正在 8 线程极速下载 ", "8-thread fast downloading "),
+        ("正在 8 线程并发下载 ", "8-thread downloading "),
+        ("正在下载 ", "Downloading "),
+        (" 至 models/", " to models/"),
+        (" 已就绪 (", " ready ("),
+        (")，跳过下载", "), skipping"),
+        ("正在为 ", "Starting 8-stream parallel download for "),
+        (" 启动 8 路并发 HTTP Range 极速下载通道...", "..."),
+        ("正在获取 ", "Fetching tokenizer & processor configs for "),
+        (" 的分词器与 Processor 配置文件...", "..."),
+        ("正在评估显存余量并装载 ", "Checking VRAM & loading "),
+        (" 至 GPU...", " into GPU..."),
+        ("[显存常驻加速] 正在将子模块 ", "[VRAM Pinning] Warming up submodule "),
+        (" 预热锁入 GPU 显存...", " in GPU VRAM..."),
+        (" 正在编码多模态上下文并启动推理...", " encoding multimodal context & starting inference..."),
+        (" 推理完成！耗时 ", " inference complete! Elapsed "),
+        (" 正在使用多模态编码器解析提示词", " encoding prompts with multimodal encoder"),
+        ("DiT 采样已完成，正在执行", "DiT sampling finished, running "),
+        ("3D 视频 VAE 解码", "3D Video VAE decoding"),
+        ("视频帧解码完成，正在执行 32kHz 立体声音轨解码", "Video frames decoded, decoding 32kHz stereo audio"),
+        (" 正在执行去噪采样第 ", " denoising step "),
+        (" 步 (", " ("),
+        ("VAE 解码完成，正在合成 32kHz 立体声音轨并封装 MP4", "VAE decoded, muxing 32kHz stereo audio into MP4"),
+        ("正在写入无损 PNG 图像文件", "Writing lossless PNG image"),
+        ("正在等待上一任务释放 GPU 显存锁...", "Waiting for previous job to release GPU lock..."),
+        ("生成完成！耗时 ", "Generation complete! Elapsed "),
+        ("生成出错: ", "Generation error: "),
+        ("尚未加载至 Colab GPU 显存，请先在 Mac 客户端点击「加载到显存」。", "is not loaded in Colab GPU VRAM. Click 'Load to VRAM' in the Mac app first."),
+        ("尚未加载到 GPU 显存！请先在左侧点击「加载到显存」（显存充裕时可与现有模型同时常驻）。", "is not loaded in GPU VRAM! Click 'Load to VRAM' on the left first (can co-reside with loaded models)."),
+        ("尚未加载至 GPU 显存！请先在左侧点击「加载到显存」。", "is not loaded in GPU VRAM! Click 'Load to VRAM' on the left first."),
+        ("尚未加载到显存", "is not loaded in VRAM"),
+        ("当前已常驻：", "currently resident: "),
+        ("请点击左侧「加载到显存」，显存充裕时可同时常驻无需卸载现有模型。", "Click 'Load to VRAM' on the left (can co-reside when VRAM permits)."),
+        ("当前已分配实例型号为 ", "Current assigned instance is "),
+        ("，正在释放并切换为您选择的 ", "; releasing and switching to "),
+        ("正在检查已有实例 ", "Checking existing runtime "),
+        (" 连通性...", " connectivity..."),
+        ("已通过 Google OAuth 自动挂载 Google Drive", "Mounted Google Drive automatically via Google OAuth"),
+        ("启动超时，日志尾部: ", "Startup timed out, log tail: "),
+        ("Google Drive 实时软链挂载", "Google Drive Live Symlink"),
+        ("Google Drive 云盘自动持久化", "Google Drive Auto-Persist"),
+        ("实例本地高速存储", "Local NVMe Storage")
+    ]
+    for (zhSub, enSub) in replacements {
+        if s.contains(zhSub) {
+            s = s.replacingOccurrences(of: zhSub, with: enSub)
+        }
+    }
+    return s
+}
+
+func localizeConsoleLine(_ line: String) -> String {
+    guard LanguageManager.shared.isEN, !line.isEmpty else { return line }
+    if line.contains("实时下载/采样进度流") {
+        return line.replacingOccurrences(of: "实时下载/采样进度流", with: "Live Download / Sampling Progress")
+    }
+    return localizeServerText(line)
+}
+
 // MARK: - 多模型与多模态数据结构
 
 enum ModelModality: String, Codable {
@@ -16,23 +195,51 @@ enum ModelModality: String, Codable {
 
 struct TaskModeItem: Identifiable, Hashable {
     let id: String
-    let title: String
-    let subtitle: String
+    let titleZh: String
+    let titleEn: String
+    let subtitleZh: String
+    let subtitleEn: String
     let icon: String
+
+    var title: String { L(titleZh, titleEn) }
+    var subtitle: String { L(subtitleZh, subtitleEn) }
+
+    static func == (lhs: TaskModeItem, rhs: TaskModeItem) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct OpenModelSpec: Identifiable, Hashable {
     let id: String
-    let name: String
+    let nameZh: String
+    let nameEn: String
     let repoId: String
-    let badge: String
-    let summary: String
+    let badgeZh: String
+    let badgeEn: String
+    let summaryZh: String
+    let summaryEn: String
     let approxSizeGB: Double
     let icon: String
     let modality: ModelModality
     let defaultSteps: Double
     let modes: [TaskModeItem]
     let defaultFiles: [ModelFileItem]
+
+    var name: String { L(nameZh, nameEn) }
+    var badge: String { L(badgeZh, badgeEn) }
+    var summary: String { L(summaryZh, summaryEn) }
+
+    static func == (lhs: OpenModelSpec, rhs: OpenModelSpec) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct ModelFileItem: Codable, Identifiable, Hashable {
@@ -41,15 +248,23 @@ struct ModelFileItem: Codable, Identifiable, Hashable {
     var desc: String?
     var exists: Bool
     var size_gb: Double
+
+    var localizedDesc: String? {
+        guard let raw = desc, !raw.isEmpty else { return nil }
+        return localizeModelFileDesc(raw)
+    }
 }
 
 let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
     OpenModelSpec(
         id: "minimax_h3",
-        name: "MiniMax-H3 (33B)",
+        nameZh: "MiniMax-H3 (33B)",
+        nameEn: "MiniMax-H3 (33B)",
         repoId: "MiniMaxAI/MiniMax-H3",
-        badge: "BF16 原生 · 134 GB",
-        summary: "全模态 BF16 原生满血精度同步生成高清视频与 32kHz 立体声音效、人声对白及配乐",
+        badgeZh: "BF16 原生 · 134 GB",
+        badgeEn: "Native BF16 · 134 GB",
+        summaryZh: "全模态 BF16 原生满血精度同步生成高清视频与 32kHz 立体声音效、人声对白及配乐",
+        summaryEn: "Full-modality native BF16 generation of HD video with synchronized 32kHz stereo SFX, dialogue & music",
         approxSizeGB: 134.1,
         icon: "film.stack",
         modality: .videoAudio,
@@ -57,14 +272,18 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         modes: [
             TaskModeItem(
                 id: "t2va",
-                title: "文生音视频",
-                subtitle: "输入镜头与声音描述，同步生成视频与立体声音轨",
+                titleZh: "文生音视频",
+                titleEn: "Text to Video+Audio",
+                subtitleZh: "输入镜头与声音描述，同步生成视频与立体声音轨",
+                subtitleEn: "Generate HD video and synchronized stereo audio from scene & sound prompts",
                 icon: "film"
             ),
             TaskModeItem(
                 id: "fl2va",
-                title: "首尾帧生视频",
-                subtitle: "上传首帧或尾帧参考图，精准控制起止画面与运镜过渡",
+                titleZh: "首尾帧生视频",
+                titleEn: "First/Last Frame to Video",
+                subtitleZh: "上传首帧或尾帧参考图，精准控制起止画面与运镜过渡",
+                subtitleEn: "Upload start or end keyframes to lock composition and camera transitions",
                 icon: "photo.on.rectangle.angled"
             )
         ],
@@ -89,10 +308,13 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
     ),
     OpenModelSpec(
         id: "comfyui_studio",
-        name: "ComfyUI 节点工作台",
+        nameZh: "ComfyUI 节点工作台",
+        nameEn: "ComfyUI Node Studio",
         repoId: "comfyanonymous/ComfyUI",
-        badge: "节点视频创作 · 云盘软链持久化",
-        summary: "一键拉起云端 ComfyUI + Manager 全屏节点画布，自定义节点、视频权重与工作流自动软链持久化至 Google Drive",
+        badgeZh: "节点视频创作 · 云盘软链持久化",
+        badgeEn: "Node Video Studio · Drive Symlink Persist",
+        summaryZh: "一键拉起云端 ComfyUI + Manager 全屏节点画布，自定义节点、视频权重与工作流自动软链持久化至 Google Drive",
+        summaryEn: "1-click cloud ComfyUI + Manager fullscreen node canvas with Google Drive symlink persistence for custom nodes, weights & workflows",
         approxSizeGB: 0.0,
         icon: "point.3.connected.trianglepath.dotted",
         modality: .comfyUI,
@@ -100,14 +322,18 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         modes: [
             TaskModeItem(
                 id: "comfy_canvas",
-                title: "全屏节点画布",
-                subtitle: "一键部署并跳转浏览器全屏节点画布，复用 G4 保活、折线监控与自动休眠",
+                titleZh: "全屏节点画布",
+                titleEn: "Fullscreen Node Canvas",
+                subtitleZh: "一键部署并跳转浏览器全屏节点画布，复用 G4 保活、折线监控与自动休眠",
+                subtitleEn: "Deploy & open fullscreen canvas in browser with G4 keepalive, live telemetry & auto-sleep",
                 icon: "macwindow.badge.plus"
             ),
             TaskModeItem(
                 id: "comfy_assets",
-                title: "极速下权重与回传成片",
-                subtitle: "8 线程极速下载视频模型至云盘 models 目录，并将 output 成片一键回传 Mac",
+                titleZh: "极速下权重与回传成片",
+                titleEn: "Fast Weights & Pull Outputs",
+                subtitleZh: "8 线程极速下载视频模型至云盘 models 目录，并将 output 成片一键回传 Mac",
+                subtitleEn: "8-thread fast model download to Drive models folder & 1-click output pull to Mac",
                 icon: "externaldrive.badge.icloud"
             )
         ],
@@ -115,10 +341,13 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
     ),
     OpenModelSpec(
         id: "qwen38_27b",
-        name: "Qwen3.8-27B",
+        nameZh: "Qwen3.8-27B",
+        nameEn: "Qwen3.8-27B",
         repoId: "Qwen/Qwen3.8-27B",
-        badge: "BF16 原生 · 51.8 GB",
-        summary: "Hugging Face 榜首开源多模态大模型（BF16 原生满血精度，支持最高 256K 上下文，需大显存实例）",
+        badgeZh: "BF16 原生 · 51.8 GB",
+        badgeEn: "Native BF16 · 51.8 GB",
+        summaryZh: "Hugging Face 榜首开源多模态大模型（BF16 原生满血精度，支持最高 256K 上下文，需大显存实例）",
+        summaryEn: "Top Hugging Face open multimodal LLM (full native BF16 precision, up to 256K context, high-VRAM GPU)",
         approxSizeGB: 51.8,
         icon: "brain",
         modality: .llmVLM,
@@ -126,20 +355,26 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         modes: [
             TaskModeItem(
                 id: "chat",
-                title: "深度推理对话",
-                subtitle: "支持长思维链推理、代码架构、复杂逻辑与分镜脚本创作",
+                titleZh: "深度推理对话",
+                titleEn: "Deep Reasoning Chat",
+                subtitleZh: "支持长思维链推理、代码架构、复杂逻辑与分镜脚本创作",
+                subtitleEn: "Long chain-of-thought reasoning, software architecture, logic & storyboard scripting",
                 icon: "bubble.left.and.bubble.right"
             ),
             TaskModeItem(
                 id: "vlm",
-                title: "图像视觉理解",
-                subtitle: "拖入图片进行画面解析、OCR 识别或反推专业生图/生视频提示词",
+                titleZh: "图像视觉理解",
+                titleEn: "Vision Understanding",
+                subtitleZh: "拖入图片进行画面解析、OCR 识别或反推专业生图/生视频提示词",
+                subtitleEn: "Drop images for scene analysis, OCR, or reverse-engineering image/video prompts",
                 icon: "eye"
             ),
             TaskModeItem(
                 id: "api",
-                title: "API 协议网关",
-                subtitle: "提供 OpenAI (/v1) 与 Anthropic (/v1/messages) 双协议公网接口",
+                titleZh: "API 协议网关",
+                titleEn: "API Protocol Gateway",
+                subtitleZh: "提供 OpenAI (/v1) 与 Anthropic (/v1/messages) 双协议公网接口",
+                subtitleEn: "Public dual-protocol gateway compatible with OpenAI (/v1) & Anthropic (/v1/messages)",
                 icon: "network"
             )
         ],
@@ -154,10 +389,13 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
     ),
     OpenModelSpec(
         id: "qwen38_27b_gguf",
-        name: "Qwen3.8-27B-GGUF",
+        nameZh: "Qwen3.8-27B-GGUF",
+        nameEn: "Qwen3.8-27B-GGUF",
         repoId: "unsloth/Qwen3.8-27B-GGUF",
-        badge: "UD-Q4_K_M + MTP · 18.7 GB",
-        summary: "Unsloth 动态 4-bit 量化 + 原生 MTP 多词元投机解码加速，支持最高 256K 上下文与多模态视觉理解",
+        badgeZh: "UD-Q4_K_M + MTP · 18.7 GB",
+        badgeEn: "UD-Q4_K_M + MTP · 18.7 GB",
+        summaryZh: "Unsloth 动态 4-bit 量化 + 原生 MTP 多词元投机解码加速，支持最高 256K 上下文与多模态视觉理解",
+        summaryEn: "Unsloth dynamic 4-bit quantization + native MTP speculative decoding (~100 tok/s), up to 256K context & vision",
         approxSizeGB: 18.7,
         icon: "cpu",
         modality: .llmVLM,
@@ -165,20 +403,26 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         modes: [
             TaskModeItem(
                 id: "chat",
-                title: "深度推理对话",
-                subtitle: "UD-Q4_K_M + MTP 投机解码极速推理，支持长思维链、代码架构与超长上下文分析",
+                titleZh: "深度推理对话",
+                titleEn: "Deep Reasoning Chat",
+                subtitleZh: "UD-Q4_K_M + MTP 投机解码极速推理，支持长思维链、代码架构与超长上下文分析",
+                subtitleEn: "Ultra-fast UD-Q4_K_M + MTP speculative decoding for CoT reasoning, coding & long-context analysis",
                 icon: "bubble.left.and.bubble.right"
             ),
             TaskModeItem(
                 id: "vlm",
-                title: "图像视觉理解",
-                subtitle: "内置 mmproj-F16 视觉投影器，支持图片解析、OCR 与生图/生视频提示词反推",
+                titleZh: "图像视觉理解",
+                titleEn: "Vision Understanding",
+                subtitleZh: "内置 mmproj-F16 视觉投影器，支持图片解析、OCR 与生图/生视频提示词反推",
+                subtitleEn: "Built-in mmproj-F16 vision projector for image analysis, OCR & prompt reverse-engineering",
                 icon: "eye"
             ),
             TaskModeItem(
                 id: "api",
-                title: "API 协议网关",
-                subtitle: "提供 OpenAI (/v1) 与 Anthropic (/v1/messages) 双协议公网接口",
+                titleZh: "API 协议网关",
+                titleEn: "API Protocol Gateway",
+                subtitleZh: "提供 OpenAI (/v1) 与 Anthropic (/v1/messages) 双协议公网接口",
+                subtitleEn: "Public dual-protocol gateway compatible with OpenAI (/v1) & Anthropic (/v1/messages)",
                 icon: "network"
             )
         ],
@@ -190,10 +434,13 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
     ),
     OpenModelSpec(
         id: "qwen_image_21",
-        name: "Qwen-Image-2.1",
+        nameZh: "Qwen-Image-2.1",
+        nameEn: "Qwen-Image-2.1",
         repoId: "Qwen/Qwen-Image-2.1",
-        badge: "文生图与修图 · 30.9 GB",
-        summary: "通义千问新一代旗舰图像生成与自然语言多图指令编辑模型",
+        badgeZh: "文生图与修图 · 30.9 GB",
+        badgeEn: "Text-to-Image & Edit · 30.9 GB",
+        summaryZh: "通义千问新一代旗舰图像生成与自然语言多图指令编辑模型",
+        summaryEn: "Qwen flagship image generation & natural-language multi-image instruction editing model",
         approxSizeGB: 30.9,
         icon: "paintbrush.pointed",
         modality: .image,
@@ -201,14 +448,18 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         modes: [
             TaskModeItem(
                 id: "t2i",
-                title: "高清文生图",
-                subtitle: "复杂构图、精准中英文排版与高质感摄影/插画生成",
+                titleZh: "高清文生图",
+                titleEn: "HD Text-to-Image",
+                subtitleZh: "复杂构图、精准中英文排版与高质感摄影/插画生成",
+                subtitleEn: "Complex composition, accurate bilingual typography & high-fidelity photography/illustration",
                 icon: "photo.artframe"
             ),
             TaskModeItem(
                 id: "i2i_edit",
-                title: "多图指令修图",
-                subtitle: "上传 1~2 张原图，用自然语言指令改局部、换背景或融合主体",
+                titleZh: "多图指令修图",
+                titleEn: "Multi-Image Instruction Edit",
+                subtitleZh: "上传 1~2 张原图，用自然语言指令改局部、换背景或融合主体",
+                subtitleEn: "Upload 1–2 source images to edit regions, swap backgrounds, or fuse subjects via natural language",
                 icon: "wand.and.rays"
             )
         ],
@@ -224,10 +475,13 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
     ),
     OpenModelSpec(
         id: "z_image_turbo",
-        name: "Z-Image-Turbo",
+        nameZh: "Z-Image-Turbo",
+        nameEn: "Z-Image-Turbo",
         repoId: "Tongyi-MAI/Z-Image-Turbo",
-        badge: "8步极速生图 · 30.6 GB",
-        summary: "Hugging Face 高人气 8 步蒸馏极速写实摄影与中英文海报生图模型",
+        badgeZh: "8步极速生图 · 30.6 GB",
+        badgeEn: "8-Step Turbo Image · 30.6 GB",
+        summaryZh: "Hugging Face 高人气 8 步蒸馏极速写实摄影与中英文海报生图模型",
+        summaryEn: "Popular Hugging Face 8-step distilled model for ultra-fast photorealism & bilingual poster design",
         approxSizeGB: 30.6,
         icon: "bolt.square",
         modality: .image,
@@ -235,14 +489,18 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
         modes: [
             TaskModeItem(
                 id: "t2i",
-                title: "8 步极速文生图",
-                subtitle: "仅需 8 步采样，秒级输出商业级人像摄影与中英文排版画面",
+                titleZh: "8 步极速文生图",
+                titleEn: "8-Step Fast Text-to-Image",
+                subtitleZh: "仅需 8 步采样，秒级输出商业级人像摄影与中英文排版画面",
+                subtitleEn: "Commercial-grade portrait photography & bilingual poster typography in just 8 steps",
                 icon: "bolt"
             ),
             TaskModeItem(
                 id: "i2i_edit",
-                title: "图生图风格重绘",
-                subtitle: "上传参考底图并调节重绘幅度，保留构图生成全新细节",
+                titleZh: "图生图风格重绘",
+                titleEn: "Image-to-Image Restyle",
+                subtitleZh: "上传参考底图并调节重绘幅度，保留构图生成全新细节",
+                subtitleEn: "Upload a reference image and adjust denoising strength to restyle while preserving layout",
                 icon: "square.on.square"
             )
         ],
@@ -260,82 +518,121 @@ let OPEN_MODEL_CATALOG: [OpenModelSpec] = [
 
 struct ResolutionOption: Identifiable, Hashable {
     let id: String
-    let label: String
+    let labelZh: String
+    let labelEn: String
     let width: Int
     let height: Int
+
+    var label: String { L(labelZh, labelEn) }
+
+    static func == (lhs: ResolutionOption, rhs: ResolutionOption) -> Bool {
+        lhs.id == rhs.id && lhs.width == rhs.width && lhs.height == rhs.height
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(width)
+        hasher.combine(height)
+    }
 }
 
 let VIDEO_RESOLUTIONS: [ResolutionOption] = [
-    ResolutionOption(id: "v_832_480", label: "832 × 480 (16:9 横屏标准 · 推荐)", width: 832, height: 480),
-    ResolutionOption(id: "v_480_832", label: "480 × 832 (9:16 竖屏短视频)", width: 480, height: 832),
-    ResolutionOption(id: "v_1280_720", label: "1280 × 720 (16:9 720P 高清)", width: 1280, height: 720),
-    ResolutionOption(id: "v_720_1280", label: "720 × 1280 (9:16 720P 竖屏)", width: 720, height: 1280),
-    ResolutionOption(id: "v_640_640", label: "640 × 640 (1:1 方形)", width: 640, height: 640)
+    ResolutionOption(id: "v_832_480", labelZh: "832 × 480 (16:9 横屏标准 · 推荐)", labelEn: "832 × 480 (16:9 Landscape · Recommended)", width: 832, height: 480),
+    ResolutionOption(id: "v_480_832", labelZh: "480 × 832 (9:16 竖屏短视频)", labelEn: "480 × 832 (9:16 Vertical Short)", width: 480, height: 832),
+    ResolutionOption(id: "v_1280_720", labelZh: "1280 × 720 (16:9 720P 高清)", labelEn: "1280 × 720 (16:9 720P HD)", width: 1280, height: 720),
+    ResolutionOption(id: "v_720_1280", labelZh: "720 × 1280 (9:16 720P 竖屏)", labelEn: "720 × 1280 (9:16 720P Vertical)", width: 720, height: 1280),
+    ResolutionOption(id: "v_640_640", labelZh: "640 × 640 (1:1 方形)", labelEn: "640 × 640 (1:1 Square)", width: 640, height: 640)
 ]
 
 let IMAGE_RESOLUTIONS: [ResolutionOption] = [
-    ResolutionOption(id: "i_1024_1024", label: "1024 × 1024 (1:1 超清方图 · 推荐)", width: 1024, height: 1024),
-    ResolutionOption(id: "i_1344_768", label: "1344 × 768 (16:9 电影横幅)", width: 1344, height: 768),
-    ResolutionOption(id: "i_768_1344", label: "768 × 1344 (9:16 竖版海报)", width: 768, height: 1344),
-    ResolutionOption(id: "i_1536_1024", label: "1536 × 1024 (3:2 单反摄影)", width: 1536, height: 1024)
+    ResolutionOption(id: "i_1024_1024", labelZh: "1024 × 1024 (1:1 超清方图 · 推荐)", labelEn: "1024 × 1024 (1:1 Square HD · Recommended)", width: 1024, height: 1024),
+    ResolutionOption(id: "i_1344_768", labelZh: "1344 × 768 (16:9 电影横幅)", labelEn: "1344 × 768 (16:9 Cinematic Widescreen)", width: 1344, height: 768),
+    ResolutionOption(id: "i_768_1344", labelZh: "768 × 1344 (9:16 竖版海报)", labelEn: "768 × 1344 (9:16 Vertical Poster)", width: 768, height: 1344),
+    ResolutionOption(id: "i_1536_1024", labelZh: "1536 × 1024 (3:2 单反摄影)", labelEn: "1536 × 1024 (3:2 DSLR Photo)", width: 1536, height: 1024)
 ]
 
 struct PresetTemplate: Identifiable {
-    let id = UUID()
+    let id: String
     let category: ModelModality
-    let name: String
-    let visual: String
+    let nameZh: String
+    let nameEn: String
+    let visualZh: String
+    let visualEn: String
     let soundscape: String
     let music: String
+
+    var name: String { L(nameZh, nameEn) }
+    var visual: String { L(visualZh, visualEn) }
 }
 
 let PRESET_TEMPLATES: [PresetTemplate] = [
     PresetTemplate(
+        id: "tpl_shinkai_train",
         category: .videoAudio,
-        name: "[动漫] 新海诚风 · 盛夏樱花铁道口",
-        visual: "Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.",
+        nameZh: "[动漫] 新海诚风 · 盛夏樱花铁道口",
+        nameEn: "[Anime] Makoto Shinkai · Cherry Blossom Railway",
+        visualZh: "Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.",
+        visualEn: "Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.",
         soundscape: "Metallic clacking of train wheels on railway tracks, rhythmic dinging of the railroad crossing warning bell, warm spring wind rustling through leaves, a soft gasp from the girl.",
         music: "Emotional and nostalgic solo piano melody joined by warm acoustic guitar and soaring cinematic strings."
     ),
     PresetTemplate(
+        id: "tpl_ufotable_duel",
         category: .videoAudio,
-        name: "[动漫] 飞碟社风 · 苍蓝雷光剑术对决",
-        visual: "High-budget ufotable anime action sakuga, dynamic fast-paced camera tracking. A silver-haired anime swordsman in a dark haori coat dashes across a shattered stone temple under a blood-red full moon, swinging a katana wreathed in crackling blue lightning and swirling water dragon effects. Sparks and glowing embers fly toward the camera in slow-motion impact frames, intense anime shading, dramatic motion blur.",
+        nameZh: "[动漫] 飞碟社风 · 苍蓝雷光剑术对决",
+        nameEn: "[Anime] Ufotable Sakuga · Azure Lightning Sword Duel",
+        visualZh: "High-budget ufotable anime action sakuga, dynamic fast-paced camera tracking. A silver-haired anime swordsman in a dark haori coat dashes across a shattered stone temple under a blood-red full moon, swinging a katana wreathed in crackling blue lightning and swirling water dragon effects. Sparks and glowing embers fly toward the camera in slow-motion impact frames, intense anime shading, dramatic motion blur.",
+        visualEn: "High-budget ufotable anime action sakuga, dynamic fast-paced camera tracking. A silver-haired anime swordsman in a dark haori coat dashes across a shattered stone temple under a blood-red full moon, swinging a katana wreathed in crackling blue lightning and swirling water dragon effects. Sparks and glowing embers fly toward the camera in slow-motion impact frames, intense anime shading, dramatic motion blur.",
         soundscape: "Sharp metallic sword unsheathing and clashing clang, roaring thunder and crackling electric arcs, heavy stone debris crumbling, fierce battle cry.",
         music: "Epic dark orchestral battle music with fast taiko drums, intense choir, and distorted electric guitar riffs."
     ),
     PresetTemplate(
+        id: "tpl_iceland_fpv",
         category: .videoAudio,
-        name: "[写实] 冰岛巨型瀑布 FPV 穿越机航拍",
-        visual: "FPV drone shot diving down a majestic Icelandic waterfall surrounded by lush green moss and basalt columns under golden hour sunlight, mist rising into a rainbow.",
+        nameZh: "[写实] 冰岛巨型瀑布 FPV 穿越机航拍",
+        nameEn: "[Realism] Iceland Waterfall FPV Drone Dive",
+        visualZh: "FPV drone shot diving down a majestic Icelandic waterfall surrounded by lush green moss and basalt columns under golden hour sunlight, mist rising into a rainbow.",
+        visualEn: "FPV drone shot diving down a majestic Icelandic waterfall surrounded by lush green moss and basalt columns under golden hour sunlight, mist rising into a rainbow.",
         soundscape: "Roaring waterfall rushing water, wind whooshing past the camera, distant seabirds calling.",
         music: "Epic cinematic acoustic guitar and soaring cello."
     ),
     PresetTemplate(
+        id: "tpl_cyber_poster",
         category: .image,
-        name: "[生图] 东方赛博霓虹商业海报（含中文排版）",
-        visual: "超清商业电影海报摄影，雨夜霓虹闪烁的未来上海外滩街道，一位身着机能风银色夹克的少女回眸凝视镜头，景深虚化光斑，顶部醒目发光现代中文字体排版写着“未来纪元 2026”，极致光影细节，8K画质。",
+        nameZh: "[生图] 东方赛博霓虹商业海报（含中文排版）",
+        nameEn: "[Image] Cyberpunk Neon Bund Poster (Chinese Title)",
+        visualZh: "超清商业电影海报摄影，雨夜霓虹闪烁的未来上海外滩街道，一位身着机能风银色夹克的少女回眸凝视镜头，景深虚化光斑，顶部醒目发光现代中文字体排版写着“未来纪元 2026”，极致光影细节，8K画质。",
+        visualEn: "Ultra-HD commercial sci-fi movie poster photography, rain-slicked cyberpunk Shanghai Bund street glowing with neon reflections at night, a young woman in a futuristic silver techwear jacket looking back at the camera, shallow depth of field bokeh flares, bold glowing modern title typography at the top reading \"FUTURE ERA 2026\" (未来纪元 2026), intricate lighting details, 8K.",
         soundscape: "",
         music: ""
     ),
     PresetTemplate(
+        id: "tpl_film_cafe",
         category: .image,
-        name: "[生图] 胶片质感午后咖啡馆肖像",
-        visual: "Hasselblad medium format film photography, soft golden afternoon sunlight streaming through wooden blinds onto a cozy minimalist Tokyo cafe table, a ceramic pour-over coffee dripper with rising steam beside an open sketchbook, natural film grain, ultra-detailed textures.",
+        nameZh: "[生图] 胶片质感午后咖啡馆肖像",
+        nameEn: "[Image] Hasselblad Film Afternoon Tokyo Cafe",
+        visualZh: "Hasselblad medium format film photography, soft golden afternoon sunlight streaming through wooden blinds onto a cozy minimalist Tokyo cafe table, a ceramic pour-over coffee dripper with rising steam beside an open sketchbook, natural film grain, ultra-detailed textures.",
+        visualEn: "Hasselblad medium format film photography, soft golden afternoon sunlight streaming through wooden blinds onto a cozy minimalist Tokyo cafe table, a ceramic pour-over coffee dripper with rising steam beside an open sketchbook, natural film grain, ultra-detailed textures.",
         soundscape: "",
         music: ""
     ),
     PresetTemplate(
+        id: "tpl_llm_storyboard",
         category: .llmVLM,
-        name: "[推理] 为 AI 视频导演生成 3 组新海诚风分镜提示词",
-        visual: "请帮我构思 3 组极具画面感的新海诚风格动画短片分镜，每组包含：1) 英文 Visual & Camera 镜头提示词；2) Soundscape 环境音描述；3) Background Music 配乐描述。",
+        nameZh: "[推理] 为 AI 视频导演生成 3 组新海诚风分镜提示词",
+        nameEn: "[Reasoning] Generate 3 Shinkai-Style AI Video Storyboard Prompts",
+        visualZh: "请帮我构思 3 组极具画面感的新海诚风格动画短片分镜，每组包含：1) 英文 Visual & Camera 镜头提示词；2) Soundscape 环境音描述；3) Background Music 配乐描述。",
+        visualEn: "Please design 3 vivid Makoto Shinkai-style anime short film storyboard shots. For each shot, provide: 1) Visual & Camera prompt; 2) Soundscape & SFX prompt; 3) Background Music prompt.",
         soundscape: "",
         music: ""
     ),
     PresetTemplate(
+        id: "tpl_vlm_reverse",
         category: .llmVLM,
-        name: "[视觉] 深度解析图片构图并反推生图/生视频 Prompt",
-        visual: "请仔细观察这张图片的主体、光影色调、镜头景别与艺术风格，先做简要中文分析，然后反推出一段高质量的英文生图/生视频 Prompt。",
+        nameZh: "[视觉] 深度解析图片构图并反推生图/生视频 Prompt",
+        nameEn: "[Vision] Analyze Image Composition & Reverse-Engineer Prompt",
+        visualZh: "请仔细观察这张图片的主体、光影色调、镜头景别与艺术风格，先做简要中文分析，然后反推出一段高质量的英文生图/生视频 Prompt。",
+        visualEn: "Carefully analyze the subject, lighting, color palette, camera framing, and artistic style of this image. First give a concise visual breakdown, then write a high-quality English image/video generation prompt.",
         soundscape: "",
         music: ""
     )
@@ -349,6 +646,13 @@ struct LoadedModelSummary: Codable, Identifiable, Hashable {
     var mode: String?
     var vram_gb: Double?
     var context_length: Int?
+
+    var localizedName: String {
+        if let spec = OPEN_MODEL_CATALOG.first(where: { $0.id == id }) {
+            return spec.name
+        }
+        return localizeServerText(name)
+    }
 }
 
 struct ColabStatusResponse: Codable {
@@ -427,6 +731,68 @@ struct ComfyPresetPackItem: Codable, Identifiable, Hashable {
     var total_models: Int
     var workflows_installed: Bool
     var ready: Bool
+
+    var localizedTitle: String {
+        guard LanguageManager.shared.isEN else { return title }
+        switch id {
+        case "wan22_i2v_flf2v":
+            return "Wan2.2 14B · Image-to-Video + First/Last Frame Dual Workflows"
+        case "minimax_h3_i2v_flf2v":
+            return "MiniMax-H3 Turbo · Image-to-Video+Audio + First/Last Frame"
+        case "ltx23_flf2v":
+            return "LTX-2.3 (22B) · Cinematic Camera Motion First/Last Frame + Audio"
+        case "hunyuan15_i2v_1080p":
+            return "HunyuanVideo 1.5 · Single-Image Direct 1080P Super-Res Workflow"
+        default:
+            return localizeServerText(title)
+        }
+    }
+
+    var localizedBadge: String {
+        guard LanguageManager.shared.isEN else { return badge }
+        switch id {
+        case "wan22_i2v_flf2v":
+            return "Beginner Pick · 4-Step Fast"
+        case "minimax_h3_i2v_flf2v":
+            return "Stereo Audio · 8-Step Turbo"
+        case "ltx23_flf2v":
+            return "Cinematic Camera · Only 2 Weights"
+        case "hunyuan15_i2v_1080p":
+            return "720P + 1080P Dual Output"
+        default:
+            return localizeServerText(badge)
+        }
+    }
+
+    var localizedScenario: String {
+        guard LanguageManager.shared.isEN else { return scenario }
+        switch id {
+        case "wan22_i2v_flf2v":
+            return "Includes 'Single Image to Video' & 'First/Last Frame Smooth Transition' templates (~25s on G4, 100% built-in nodes, zero missing-node errors)"
+        case "minimax_h3_i2v_flf2v":
+            return "Includes single-image and first/last-frame templates generating HD video with synchronized stereo SFX, dialogue & music in one pass"
+        case "ltx23_flf2v":
+            return "Optimized for dramatic camera moves between start & end keyframes (e.g. aerial crane dive to low-angle close-up + synthesized soundtrack)"
+        case "hunyuan15_i2v_1080p":
+            return "Latent super-resolution pipeline enabled by default — upload 1 image to render both 720P base video and 1920×1080 Full HD output"
+        default:
+            return localizeServerText(scenario)
+        }
+    }
+
+    static func localizedWorkflowLabel(_ rawName: String) -> String {
+        let stripped = rawName.replacingOccurrences(of: ".json", with: "")
+        guard LanguageManager.shared.isEN else { return stripped }
+        let map: [String: String] = [
+            "01_Wan2.2_极速单图生视频(4步傻瓜版)": "01_Wan2.2_Fast_Single_I2V_4Step",
+            "02_Wan2.2_首尾帧丝滑过渡(双图4步极速)": "02_Wan2.2_FirstLastFrame_4Step",
+            "03_MiniMax-H3_极速图生有声视频(单图带立体声)": "03_MiniMax-H3_Fast_I2VA_Stereo",
+            "04_MiniMax-H3_首尾帧有声过渡(双图带立体声)": "04_MiniMax-H3_FirstLastFrame_Stereo",
+            "05_LTX-2.3_首尾帧电影运镜(双图极速带音效)": "05_LTX-2.3_Cinematic_FLF2V_Audio",
+            "06_Hunyuan1.5_单图直出1080P超清视频": "06_Hunyuan1.5_Direct_1080P_I2V"
+        ]
+        return map[stripped] ?? stripped
+    }
 }
 
 let DEFAULT_COMFY_PRESET_PACKS: [ComfyPresetPackItem] = [
@@ -587,11 +953,17 @@ struct LocalMediaItem: Identifiable, Hashable {
 func formatDuration(_ sec: Double, compact: Bool = false) -> String {
     let s = max(0.0, sec)
     if s < 60.0 {
-        return compact ? String(format: "%.1fs", s) : String(format: "%.1f 秒", s)
+        if compact { return String(format: "%.1fs", s) }
+        return LanguageManager.shared.isEN
+            ? String(format: "%.1f s", s)
+            : String(format: "%.1f 秒", s)
     }
     let mins = Int(s) / 60
     let rem = s - Double(mins * 60)
-    return compact ? String(format: "%dm%.0fs", mins, rem) : String(format: "%d分%.1f秒", mins, rem)
+    if compact { return String(format: "%dm%.0fs", mins, rem) }
+    return LanguageManager.shared.isEN
+        ? String(format: "%dm %.1fs", mins, rem)
+        : String(format: "%d分%.1f秒", mins, rem)
 }
 
 struct ChatTurnItem: Identifiable, Hashable {
@@ -803,6 +1175,28 @@ class StudioViewModel: ObservableObject {
     }
     @Published var hfToken: String = ""
 
+    // 默认初始文案（支持中英文双向无损切换）
+    static let defaultGpuNameZh = "未连接 Colab 服务端"
+    static let defaultGpuNameEn = "Colab Server Disconnected"
+    static let defaultModelNameZh = "未加载"
+    static let defaultModelNameEn = "Not Loaded"
+    static let defaultComfyStatusZh = "尚未启动云端 ComfyUI 工作台"
+    static let defaultComfyStatusEn = "Cloud ComfyUI Studio Not Started"
+    static let defaultComfyPersistZh = "Google Drive 自动软链持久化"
+    static let defaultComfyPersistEn = "Google Drive Auto-Symlink Persistence"
+    static let defaultReadyStatusZh = "就绪：默认已选 G4 (RTX PRO 6000 · 96GB)，可在左侧一键唤醒实例并部署模型。"
+    static let defaultReadyStatusEn = "Ready: G4 (RTX PRO 6000 · 96GB) selected by default. Wake & deploy from the left sidebar."
+    static let defaultWelcomeLinesZh: [String] = [
+        "欢迎使用 EasyColab 多模态云端算力工作台",
+        "默认搭载 G4 (RTX PRO 6000 · 96GB)，支持一键部署 ComfyUI 节点工作台 (云盘软链持久化)、MiniMax-H3、Qwen3.8-27B (UD-Q4_K_M GGUF 100 tok/s / BF16)、Qwen-Image-2.1 与 Z-Image-Turbo。"
+    ]
+    static let defaultWelcomeLinesEn: [String] = [
+        "Welcome to EasyColab Multimodal Cloud GPU Studio",
+        "Powered by G4 (RTX PRO 6000 · 96GB) by default — 1-click deploy ComfyUI Node Studio (Drive symlink persistence), MiniMax-H3, Qwen3.8-27B (UD-Q4_K_M GGUF 100 tok/s / BF16), Qwen-Image-2.1 & Z-Image-Turbo."
+    ]
+    static let clearedConsoleLineZh = "已清空历史输出，正在监听云端实时日志..."
+    static let clearedConsoleLineEn = "Cleared log history. Listening for live cloud logs..."
+
     // Colab CLI 唤醒与真实账本状态
     @Published var cliLoggedIn: Bool = false
     @Published var accountEmail: String = ""
@@ -811,9 +1205,9 @@ class StudioViewModel: ObservableObject {
     @Published var officialCUBalance: Double? = nil
 
     var displayAccountLabel: String {
-        guard cliLoggedIn else { return "未绑定" }
+        guard cliLoggedIn else { return L("未绑定", "Unbound") }
         let raw = accountEmail.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty else { return "已连接" }
+        guard !raw.isEmpty else { return L("已连接", "Connected") }
         if maskServerURL, let atIdx = raw.firstIndex(of: "@") {
             let prefix = String(raw[..<atIdx].prefix(2))
             let domain = String(raw[atIdx...])
@@ -833,7 +1227,7 @@ class StudioViewModel: ObservableObject {
 
     // 远端 GPU 与多模型驻留状态
     @Published var isConnected: Bool = false
-    @Published var gpuName: String = "未连接 Colab 服务端" {
+    @Published var gpuName: String = L(StudioViewModel.defaultGpuNameZh, StudioViewModel.defaultGpuNameEn) {
         didSet { let c = stripEmoji(gpuName); if c != gpuName { gpuName = c } }
     }
     @Published var vramFreeGB: Double = 0.0
@@ -861,7 +1255,7 @@ class StudioViewModel: ObservableObject {
     @Published var loadedModelsDetail: [LoadedModelSummary] = []
     @Published var modelLoaded: Bool = false
     @Published var isUnloadingModel: Bool = false
-    @Published var currentModelName: String = "未加载" {
+    @Published var currentModelName: String = L(StudioViewModel.defaultModelNameZh, StudioViewModel.defaultModelNameEn) {
         didSet { let c = stripEmoji(currentModelName); if c != currentModelName { currentModelName = c } }
     }
 
@@ -888,10 +1282,9 @@ class StudioViewModel: ObservableObject {
     private var remoteIdleSynced: Bool = false
     @Published var drivePersisted: Bool = false
     @Published var bf16ShardsCount: Int = 0
-    @Published var liveConsoleLines: [String] = [
-        "欢迎使用 EasyColab 多模态云端算力工作台",
-        "默认搭载 G4 (RTX PRO 6000 · 96GB)，支持一键部署 ComfyUI 节点工作台 (云盘软链持久化)、MiniMax-H3、Qwen3.8-27B (UD-Q4_K_M GGUF 100 tok/s / BF16)、Qwen-Image-2.1 与 Z-Image-Turbo。"
-    ] {
+    @Published var liveConsoleLines: [String] = (
+        LanguageManager.shared.isEN ? StudioViewModel.defaultWelcomeLinesEn : StudioViewModel.defaultWelcomeLinesZh
+    ) {
         didSet { let c = liveConsoleLines.map(stripEmoji); if c != liveConsoleLines { liveConsoleLines = c } }
     }
 
@@ -912,13 +1305,13 @@ class StudioViewModel: ObservableObject {
     @Published var comfyInstallingPackId: String = ""
     @Published var comfyPresetPacks: [ComfyPresetPackItem] = DEFAULT_COMFY_PRESET_PACKS
     @Published var comfyProgress: Double = 0.0
-    @Published var comfyStatusMessage: String = "尚未启动云端 ComfyUI 工作台" {
+    @Published var comfyStatusMessage: String = L(StudioViewModel.defaultComfyStatusZh, StudioViewModel.defaultComfyStatusEn) {
         didSet { let c = stripEmoji(comfyStatusMessage); if c != comfyStatusMessage { comfyStatusMessage = c } }
     }
     @Published var comfyPublicURL: String = ""
     @Published var comfyQueueRunning: Int = 0
     @Published var comfyQueuePending: Int = 0
-    @Published var comfyPersistenceLabel: String = "Google Drive 自动软链持久化"
+    @Published var comfyPersistenceLabel: String = L(StudioViewModel.defaultComfyPersistZh, StudioViewModel.defaultComfyPersistEn)
     @Published var comfyDrivePersisted: Bool = false
     @Published var comfyPersistRoot: String = "/content/drive/MyDrive/EasyColab_ComfyUI"
     @Published var comfyCustomNodesCount: Int = 0
@@ -1039,9 +1432,15 @@ class StudioViewModel: ObservableObject {
             UserDefaults.standard.set(mediaElapsedMap, forKey: "mediaElapsedSecondsMap")
         }
     }
-    @Published var statusMessage: String = "就绪：默认已选 G4 (RTX PRO 6000 · 96GB)，可在左侧一键唤醒实例并部署模型。" {
+    @Published var statusMessage: String = L(StudioViewModel.defaultReadyStatusZh, StudioViewModel.defaultReadyStatusEn) {
         didSet { let c = stripEmoji(statusMessage); if c != statusMessage { statusMessage = c } }
     }
+
+    var displayGpuName: String { localizeServerText(gpuName) }
+    var displayCurrentModelName: String { localizeServerText(currentModelName) }
+    var displayComfyStatusMessage: String { localizeServerText(comfyStatusMessage) }
+    var displayComfyPersistenceLabel: String { localizeServerText(comfyPersistenceLabel) }
+    var displayStatusMessage: String { localizeServerText(statusMessage) }
 
     // 多媒体预览与本地历史记录
     @Published var currentMediaURL: URL? = nil
@@ -1051,6 +1450,42 @@ class StudioViewModel: ObservableObject {
     @Published var showColabGuideSheet: Bool = false
     @Published var guideInitialStep: Int = 0
     @Published var showDisconnectConfirm: Bool = false
+
+    private var languageObserver: NSObjectProtocol? = nil
+
+    func toggleLanguage() {
+        LanguageManager.shared.toggle()
+    }
+
+    private func syncLocalizedDynamicTexts() {
+        let isEN = LanguageManager.shared.isEN
+        if gpuName == Self.defaultGpuNameZh || gpuName == Self.defaultGpuNameEn {
+            gpuName = isEN ? Self.defaultGpuNameEn : Self.defaultGpuNameZh
+        }
+        if currentModelName == Self.defaultModelNameZh || currentModelName == Self.defaultModelNameEn {
+            currentModelName = isEN ? Self.defaultModelNameEn : Self.defaultModelNameZh
+        }
+        if comfyStatusMessage == Self.defaultComfyStatusZh || comfyStatusMessage == Self.defaultComfyStatusEn {
+            comfyStatusMessage = isEN ? Self.defaultComfyStatusEn : Self.defaultComfyStatusZh
+        }
+        if comfyPersistenceLabel == Self.defaultComfyPersistZh || comfyPersistenceLabel == Self.defaultComfyPersistEn {
+            comfyPersistenceLabel = isEN ? Self.defaultComfyPersistEn : Self.defaultComfyPersistZh
+        }
+        if statusMessage == Self.defaultReadyStatusZh || statusMessage == Self.defaultReadyStatusEn {
+            statusMessage = isEN ? Self.defaultReadyStatusEn : Self.defaultReadyStatusZh
+        }
+        if liveConsoleLines == Self.defaultWelcomeLinesZh || liveConsoleLines == Self.defaultWelcomeLinesEn {
+            liveConsoleLines = isEN ? Self.defaultWelcomeLinesEn : Self.defaultWelcomeLinesZh
+        } else if liveConsoleLines == [Self.clearedConsoleLineZh] || liveConsoleLines == [Self.clearedConsoleLineEn] {
+            liveConsoleLines = [isEN ? Self.clearedConsoleLineEn : Self.clearedConsoleLineZh]
+        }
+        for tpl in PRESET_TEMPLATES where tpl.visualZh != tpl.visualEn {
+            if visualPrompt == tpl.visualZh || visualPrompt == tpl.visualEn {
+                visualPrompt = tpl.visual
+                break
+            }
+        }
+    }
 
     func openOnboardingGuide(step: Int = 0) {
         guideInitialStep = max(0, min(3, step))
@@ -1218,7 +1653,7 @@ class StudioViewModel: ObservableObject {
         remoteContextSynced = false
         remoteIdleSynced = false
         remoteApiKeySynced = false
-        gpuName = "未连接 Colab 服务端"
+        gpuName = L(Self.defaultGpuNameZh, Self.defaultGpuNameEn)
 
         if hadActiveState && !reason.isEmpty {
             statusMessage = reason
@@ -1282,8 +1717,25 @@ class StudioViewModel: ObservableObject {
     init() {
         refreshLocalMedia()
         startBackgroundTelemetryLoop()
+        languageObserver = NotificationCenter.default.addObserver(
+            forName: .easyColabLanguageDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.syncLocalizedDynamicTexts()
+                self.objectWillChange.send()
+            }
+        }
         Task {
             await refreshOfficialColabAccountUsage()
+        }
+    }
+
+    deinit {
+        if let languageObserver {
+            NotificationCenter.default.removeObserver(languageObserver)
         }
     }
 
@@ -1312,10 +1764,10 @@ class StudioViewModel: ObservableObject {
         if spec.modality == .comfyUI {
             if isConnected {
                 statusMessage = comfyRunning && !comfyPublicURL.isEmpty
-                    ? "ComfyUI 云端节点工作台正在运行，可一键在浏览器打开全屏画布。"
-                    : "已切换至 ComfyUI 节点工作台，点击「一键部署并启动云端 ComfyUI」即可挂载 Google Drive 软链并开通画布。"
+                    ? L("ComfyUI 云端节点工作台正在运行，可一键在浏览器打开全屏画布。", "ComfyUI Cloud Node Studio is running. Open the fullscreen canvas in your browser.")
+                    : L("已切换至 ComfyUI 节点工作台，点击「一键拉起云端 ComfyUI」即可挂载 Google Drive 软链并开通画布。", "Switched to ComfyUI Node Studio. Click 'Deploy & Open Cloud ComfyUI' to mount Google Drive symlinks and launch the canvas.")
             } else {
-                statusMessage = "已切换至 ComfyUI 节点工作台，唤醒并连接 G4 实例后即可一键部署并持久化到 Google Drive。"
+                statusMessage = L("已切换至 ComfyUI 节点工作台，唤醒并连接 G4 实例后即可一键部署并持久化到 Google Drive。", "Switched to ComfyUI Node Studio. Wake & connect a G4 instance to deploy and persist to Google Drive.")
             }
             return
         }
@@ -1325,7 +1777,10 @@ class StudioViewModel: ObservableObject {
                 await notifyRemoteSelectModel(spec.id)
             }
         } else {
-            statusMessage = "已切换至 \(spec.name) (\(spec.repoId))，连接 Colab 后即可一键下载并加载至显存。"
+            statusMessage = L(
+                "已切换至 \(spec.name) (\(spec.repoId))，连接 Colab 后即可一键下载并加载至显存。",
+                "Switched to \(spec.name) (\(spec.repoId)). Connect to Colab to download & load into VRAM."
+            )
         }
     }
 
@@ -1341,11 +1796,20 @@ class StudioViewModel: ObservableObject {
             let decoded = try JSONDecoder().decode(ColabStatusResponse.self, from: data)
             applyStatusResponse(decoded)
             if isSelectedModelLoadedInVRAM {
-                statusMessage = "\(activeModelSpec.name) 已驻留 GPU 显存，可直接开始推理！"
+                statusMessage = L(
+                    "\(activeModelSpec.name) 已驻留 GPU 显存，可直接开始推理！",
+                    "\(activeModelSpec.name) is resident in GPU VRAM and ready for inference!"
+                )
             } else if allDownloaded {
-                statusMessage = "\(activeModelSpec.name) 权重已在磁盘就绪，请点击左侧「加载到显存」。"
+                statusMessage = L(
+                    "\(activeModelSpec.name) 权重已在磁盘就绪，请点击左侧「加载到显存」。",
+                    "\(activeModelSpec.name) weights are ready on disk. Click 'Load to VRAM' on the left."
+                )
             } else {
-                statusMessage = "已切换至 \(activeModelSpec.name) | 权重进度 \(downloadedCount)/\(totalFileCount)，请先点击「下载权重」。"
+                statusMessage = L(
+                    "已切换至 \(activeModelSpec.name) | 权重进度 \(downloadedCount)/\(totalFileCount)，请先点击「下载权重」。",
+                    "Switched to \(activeModelSpec.name) | Weights \(downloadedCount)/\(totalFileCount). Click 'Download Weights' first."
+                )
             }
         } catch {}
     }
@@ -1365,11 +1829,14 @@ class StudioViewModel: ObservableObject {
 
     var formattedIdleRemaining: String {
         if idleTimeoutMinutes <= 0 || idleRemainingSeconds < 0 {
-            return "已关闭自动休眠"
+            return L("已关闭自动休眠", "Auto-sleep disabled")
         }
         let m = idleRemainingSeconds / 60
         let s = idleRemainingSeconds % 60
-        return "\(m)分\(String(format: "%02d", s))秒后自动释放实例"
+        return L(
+            "\(m)分\(String(format: "%02d", s))秒后自动释放实例",
+            "Auto-release in \(m)m \(String(format: "%02d", s))s"
+        )
     }
 
     var displayRemainingCU: Double {
@@ -1397,7 +1864,10 @@ class StudioViewModel: ObservableObject {
         guard installIfMissing else { return nil }
 
         guard let sysPy = LocalRuntimePaths.findSystemPython3() else {
-            statusMessage = "未检测到 macOS Python 3 环境，请先安装 Xcode Command Line Tools (xcode-select --install)。"
+            statusMessage = L(
+                "未检测到 macOS Python 3 环境，请先安装 Xcode Command Line Tools (xcode-select --install)。",
+                "macOS Python 3 not found. Please install Xcode Command Line Tools (xcode-select --install)."
+            )
             return nil
         }
 
@@ -1406,8 +1876,14 @@ class StudioViewModel: ObservableObject {
         let reqFile = LocalRuntimePaths.resolveBundledOrRepoFile("requirements.txt")
         let hasReqFile = FileManager.default.fileExists(atPath: reqFile)
 
-        statusMessage = "首次使用正在自动初始化本地 Colab 连接依赖环境 (约 15~30 秒)..."
-        liveConsoleLines.append("[本地初始化] 正在于 ~/Library/Application Support/EasyColab/venv 安装 google-colab-cli 依赖...")
+        statusMessage = L(
+            "首次使用正在自动初始化本地 Colab 连接依赖环境 (约 15~30 秒)...",
+            "Initializing local Colab bridge Python dependencies for first-time setup (~15–30s)..."
+        )
+        liveConsoleLines.append(L(
+            "[本地初始化] 正在于 ~/Library/Application Support/EasyColab/venv 安装 google-colab-cli 依赖...",
+            "[Local Init] Installing google-colab-cli dependencies in ~/Library/Application Support/EasyColab/venv..."
+        ))
 
         let ok = await Task.detached(priority: .userInitiated) { () -> Bool in
             let mkProc = Process()
@@ -1450,10 +1926,16 @@ class StudioViewModel: ObservableObject {
 
         if ok, FileManager.default.isExecutableFile(atPath: venvPy) {
             cachedBridgePythonBin = venvPy
-            liveConsoleLines.append("[本地初始化] Colab 本地连接组件已就绪。")
+            liveConsoleLines.append(L(
+                "[本地初始化] Colab 本地连接组件已就绪。",
+                "[Local Init] Local Colab bridge environment is ready."
+            ))
             return venvPy
         } else {
-            statusMessage = "自动安装本地连接依赖失败，请检查网络或执行 pip install -r requirements.txt。"
+            statusMessage = L(
+                "自动安装本地连接依赖失败，请检查网络或执行 pip install -r requirements.txt。",
+                "Failed to install local bridge dependencies. Check your network or run pip install -r requirements.txt."
+            )
             return nil
         }
     }
@@ -1504,7 +1986,10 @@ class StudioViewModel: ObservableObject {
         if let count = decoded.active_assignments {
             activeVMCount = count
             if count == 0 && !isConnected && (!loadedModelsDetail.isEmpty || vramTotalGB > 0) {
-                resetStaleRemoteRuntimeState(reason: "云端 Colab 实例当前未运行，已自动清理历史显存状态；点击左侧「唤醒实例并部署」即可启动。")
+                resetStaleRemoteRuntimeState(reason: L(
+                    "云端 Colab 实例当前未运行，已自动清理历史显存状态；点击左侧「唤醒实例并部署」即可启动。",
+                    "No active cloud Colab runtime detected; cleared stale VRAM state. Click 'Wake & Deploy' on the left to launch."
+                ))
             }
         }
     }
@@ -1515,8 +2000,8 @@ class StudioViewModel: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let authURLStr = json["auth_url"] as? String,
               let url = URL(string: authURLStr) else {
-            if !statusMessage.contains("初始化") && !statusMessage.contains("Python") {
-                statusMessage = "获取 Google 授权链接失败"
+            if !statusMessage.contains("初始化") && !statusMessage.contains("Initializ") && !statusMessage.contains("Python") {
+                statusMessage = L("获取 Google 授权链接失败", "Failed to obtain Google OAuth authorization URL")
             }
             return
         }
@@ -1524,8 +2009,8 @@ class StudioViewModel: ObservableObject {
         showOAuthCodeInput = true
         NSWorkspace.shared.open(url)
         statusMessage = switchingAccount
-            ? "已在浏览器打开 Google 账号选择页，请选择新账号授权并粘贴授权码（点取消可保留原账号）。"
-            : "已在浏览器打开 Google 授权页，请允许访问后粘贴授权码。"
+            ? L("已在浏览器打开 Google 账号选择页，请选择新账号授权并粘贴授权码（点取消可保留原账号）。", "Opened Google account chooser in browser. Authorize a new account and paste the code (Cancel keeps current account).")
+            : L("已在浏览器打开 Google 授权页，请允许访问后粘贴授权码。", "Opened Google authorization page in browser. Grant access and paste the auth code.")
     }
 
     func logoutGoogleAccount() async {
@@ -1538,7 +2023,10 @@ class StudioViewModel: ObservableObject {
         officialBurnRate = nil
         activeVMCount = 0
         colabServerURL = ""
-        resetStaleRemoteRuntimeState(reason: "已退出当前 Google 账号绑定；可点击左侧「绑定」登录其他账号。")
+        resetStaleRemoteRuntimeState(reason: L(
+            "已退出当前 Google 账号绑定；可点击左侧「绑定」登录其他账号。",
+            "Signed out of Google account. Click 'Bind' on the left to sign in with another account."
+        ))
     }
 
     func submitGoogleOAuthCode() async {
@@ -1546,11 +2034,11 @@ class StudioViewModel: ObservableObject {
         guard !code.isEmpty else { return }
         let prevEmail = accountEmail
         let wasLoggedIn = cliLoggedIn
-        statusMessage = "正在验证授权码并同步账户余额..."
+        statusMessage = L("正在验证授权码并同步账户余额...", "Verifying authorization code & syncing CU balance...")
         let out = await runBridgeCommand(["auth_code", code], installIfMissing: true)
         guard let data = out.data(using: .utf8),
               let decoded = try? JSONDecoder().decode(BridgeAuthStatusResponse.self, from: data) else {
-            statusMessage = "授权验证失败，请重试。"
+            statusMessage = L("授权验证失败，请重试。", "Authorization verification failed. Please try again.")
             return
         }
         if decoded.logged_in == true {
@@ -1570,20 +2058,32 @@ class StudioViewModel: ObservableObject {
                 totalBudgetCU = bal
             }
             let emailTag = newEmail.isEmpty ? "" : " (\(displayAccountLabel))"
-            statusMessage = "Google 账号绑定成功\(emailTag)！可用额度: \(String(format: "%.2f", decoded.paid_balance ?? 0)) CU"
+            statusMessage = L(
+                "Google 账号绑定成功\(emailTag)！可用额度: \(String(format: "%.2f", decoded.paid_balance ?? 0)) CU",
+                "Google account bound\(emailTag)! Available balance: \(String(format: "%.2f", decoded.paid_balance ?? 0)) CU"
+            )
         } else {
-            statusMessage = "授权码无效: \(decoded.error ?? "请重新获取")"
+            statusMessage = L(
+                "授权码无效: \(decoded.error ?? "请重新获取")",
+                "Invalid authorization code: \(decoded.error ?? "please generate a new code")"
+            )
         }
     }
 
     func wakeColabHeadless() async {
         guard cliLoggedIn else {
-            statusMessage = "请先绑定 Google 账号后再使用免网页一键唤醒。"
+            statusMessage = L("请先绑定 Google 账号后再使用免网页一键唤醒。", "Please bind your Google account before using headless 1-click wake.")
             return
         }
         isWakingColab = true
-        statusMessage = "正在通过 Google Colab API 后台分配 \(wakeGPUChoice) 实例并部署多模型引擎..."
-        liveConsoleLines = ["[Colab-CLI] 正在启动免网页一键唤醒流程 (\(wakeGPUChoice) GPU)..."]
+        statusMessage = L(
+            "正在通过 Google Colab API 后台分配 \(wakeGPUChoice) 实例并部署多模型引擎...",
+            "Provisioning \(wakeGPUChoice) runtime via Google Colab API & deploying multi-model engine..."
+        )
+        liveConsoleLines = [L(
+            "[Colab-CLI] 正在启动免网页一键唤醒流程 (\(wakeGPUChoice) GPU)...",
+            "[Colab-CLI] Starting headless 1-click wake (\(wakeGPUChoice) GPU)..."
+        )]
 
         guard let pyBin = await ensureBridgePythonBin(installIfMissing: true) else {
             isWakingColab = false
@@ -1613,11 +2113,17 @@ class StudioViewModel: ObservableObject {
                             if line.hasPrefix("WAKE_URL:") {
                                 let url = String(line.dropFirst("WAKE_URL:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
                                 self.colabServerURL = url
-                                self.liveConsoleLines.append("成功获取云端隧道地址: \(self.maskedURLDisplay(url))")
-                                self.statusMessage = "云端 \(gpu) 实例已唤醒就绪，正在同步模型状态..."
+                                self.liveConsoleLines.append(L(
+                                    "成功获取云端隧道地址: \(self.maskedURLDisplay(url))",
+                                    "Obtained public tunnel URL: \(self.maskedURLDisplay(url))"
+                                ))
+                                self.statusMessage = L(
+                                    "云端 \(gpu) 实例已唤醒就绪，正在同步模型状态...",
+                                    "Cloud \(gpu) instance is ready. Syncing model status..."
+                                )
                             } else if line.hasPrefix("WAKE_ERROR:") {
                                 self.liveConsoleLines.append(line)
-                                self.statusMessage = "唤醒失败: \(line)"
+                                self.statusMessage = L("唤醒失败: \(line)", "Wake failed: \(line)")
                             } else {
                                 let clean = line.replacingOccurrences(of: "WAKE_LOG: ", with: "")
                                 self.liveConsoleLines.append(clean)
@@ -1632,7 +2138,10 @@ class StudioViewModel: ObservableObject {
                     proc.waitUntilExit()
                 } catch {
                     Task { @MainActor in
-                        self.statusMessage = "启动唤醒进程失败: \(error.localizedDescription)"
+                        self.statusMessage = L(
+                            "启动唤醒进程失败: \(error.localizedDescription)",
+                            "Failed to launch wake process: \(error.localizedDescription)"
+                        )
                     }
                 }
                 pipe.fileHandleForReading.readabilityHandler = nil
@@ -1796,7 +2305,7 @@ class StudioViewModel: ObservableObject {
             loadedModelsDetail = []
         }
         modelLoaded = loadedModelIds.contains(selectedModelId) || (decoded.model_loaded ?? false)
-        currentModelName = decoded.current_model ?? "未加载"
+        currentModelName = decoded.current_model ?? L(Self.defaultModelNameZh, Self.defaultModelNameEn)
         loadedContextLengthTokens = decoded.loaded_context_length ?? 0
 
         if !remoteContextSynced {
@@ -1878,12 +2387,17 @@ class StudioViewModel: ObservableObject {
     func startRemoteComfyUI(forceRestart: Bool = false, autoOpenBrowser: Bool = true) async {
         let base = normalizedBaseURL
         guard isConnected, !base.isEmpty, let url = URL(string: "\(base)/minimax_api/comfyui/start") else {
-            statusMessage = "请先唤醒或连接云端 G4 实例后再启动 ComfyUI。"
+            statusMessage = L(
+                "请先唤醒或连接云端 G4 实例后再启动 ComfyUI。",
+                "Please wake or connect to a cloud G4 instance before starting ComfyUI."
+            )
             return
         }
         comfyStarting = true
         comfyProgress = 0.04
-        let tip = forceRestart ? "正在重启云端 ComfyUI 并重新加载自定义节点..." : "正在部署云端 ComfyUI 并挂载 Google Drive 持久化软链..."
+        let tip = forceRestart
+            ? L("正在重启云端 ComfyUI 并重新加载自定义节点...", "Restarting cloud ComfyUI & reloading custom nodes...")
+            : L("正在部署云端 ComfyUI 并挂载 Google Drive 持久化软链...", "Deploying cloud ComfyUI & mounting Google Drive persistence symlinks...")
         comfyStatusMessage = tip
         statusMessage = tip
 
@@ -1906,7 +2420,10 @@ class StudioViewModel: ObservableObject {
                 await checkColabStatus(silent: true)
                 statusMessage = comfyStatusMessage
                 if comfyRunning && !comfyPublicURL.isEmpty && !comfyStarting {
-                    statusMessage = "ComfyUI 全屏节点工作台已就绪！正在为您在浏览器中打开画布..."
+                    statusMessage = L(
+                        "ComfyUI 全屏节点工作台已就绪！正在为您在浏览器中打开画布...",
+                        "ComfyUI fullscreen node canvas is ready! Opening in your browser..."
+                    )
                     if autoOpenBrowser {
                         openComfyUIInBrowser()
                     }
@@ -1918,14 +2435,20 @@ class StudioViewModel: ObservableObject {
             }
         } catch {
             comfyStarting = false
-            statusMessage = "启动 ComfyUI 请求失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "启动 ComfyUI 请求失败: \(error.localizedDescription)",
+                "Failed to start ComfyUI: \(error.localizedDescription)"
+            )
         }
     }
 
     func stopRemoteComfyUI() async {
         let base = normalizedBaseURL
         guard isConnected, !base.isEmpty, let url = URL(string: "\(base)/minimax_api/comfyui/stop") else { return }
-        statusMessage = "正在同步自定义节点与工作流到 Google Drive 并停止 ComfyUI..."
+        statusMessage = L(
+            "正在同步自定义节点与工作流到 Google Drive 并停止 ComfyUI...",
+            "Syncing custom nodes & workflows to Google Drive and stopping ComfyUI..."
+        )
         do {
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
@@ -1935,7 +2458,10 @@ class StudioViewModel: ObservableObject {
             applyStatusResponse(decoded)
             statusMessage = comfyStatusMessage
         } catch {
-            statusMessage = "停止 ComfyUI 失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "停止 ComfyUI 失败: \(error.localizedDescription)",
+                "Failed to stop ComfyUI: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -1959,7 +2485,10 @@ class StudioViewModel: ObservableObject {
         let base = normalizedBaseURL
         guard isConnected, !base.isEmpty, let url = URL(string: "\(base)/minimax_api/comfyui/sync_drive") else { return }
         comfySyncingDrive = true
-        statusMessage = "正在将 ComfyUI 自定义节点、模型与工作流同步至 Google Drive..."
+        statusMessage = L(
+            "正在将 ComfyUI 自定义节点、模型与工作流同步至 Google Drive...",
+            "Syncing ComfyUI custom nodes, models & workflows to Google Drive..."
+        )
         do {
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
@@ -1972,24 +2501,33 @@ class StudioViewModel: ObservableObject {
             }
         } catch {
             comfySyncingDrive = false
-            statusMessage = "同步至 Google Drive 失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "同步至 Google Drive 失败: \(error.localizedDescription)",
+                "Failed to sync to Google Drive: \(error.localizedDescription)"
+            )
         }
     }
 
     func startComfyWeightDownload() async {
         let src = comfyWeightSourceInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !src.isEmpty else {
-            statusMessage = "请先粘贴 HuggingFace 模型直链、下载 URL 或 仓库 ID"
+            statusMessage = L(
+                "请先粘贴 HuggingFace 模型直链、下载 URL 或 仓库 ID",
+                "Please paste a Hugging Face direct link, download URL, or repo ID first"
+            )
             return
         }
         let base = normalizedBaseURL
         guard isConnected, !base.isEmpty, let url = URL(string: "\(base)/minimax_api/comfyui/download_weight") else {
-            statusMessage = "请先连接 Colab 实例后再下载权重"
+            statusMessage = L("请先连接 Colab 实例后再下载权重", "Please connect to a Colab instance before downloading weights")
             return
         }
         comfyDownloadingWeight = true
         comfyProgress = 0.05
-        statusMessage = "正在通过云端 8 线程通道下载权重至 ComfyUI/models/\(comfyWeightSubfolder)..."
+        statusMessage = L(
+            "正在通过云端 8 线程通道下载权重至 ComfyUI/models/\(comfyWeightSubfolder)...",
+            "Downloading weights via 8-thread cloud channel to ComfyUI/models/\(comfyWeightSubfolder)..."
+        )
         do {
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
@@ -2012,20 +2550,29 @@ class StudioViewModel: ObservableObject {
             }
         } catch {
             comfyDownloadingWeight = false
-            statusMessage = "提交权重下载失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "提交权重下载失败: \(error.localizedDescription)",
+                "Failed to start weight download: \(error.localizedDescription)"
+            )
         }
     }
 
     func installComfyPresetPack(_ pack: ComfyPresetPackItem, openWhenReady: Bool = true) async {
         let base = normalizedBaseURL
         guard isConnected, !base.isEmpty, let url = URL(string: "\(base)/minimax_api/comfyui/install_pack") else {
-            statusMessage = "请先在左侧唤醒或连接云端 G4 实例后再一键配齐工作流包。"
+            statusMessage = L(
+                "请先在左侧唤醒或连接云端 G4 实例后再一键配齐工作流包。",
+                "Please wake or connect to a cloud G4 instance on the left before installing a workflow pack."
+            )
             return
         }
         comfyDownloadingWeight = true
         comfyInstallingPackId = pack.id
         comfyProgress = 0.04
-        let tip = "正在为您一键配齐「\(pack.title)」模型权重与全中文工作流..."
+        let tip = L(
+            "正在为您一键配齐「\(pack.localizedTitle)」模型权重与全中文工作流...",
+            "Installing models & workflow templates for \"\(pack.localizedTitle)\"..."
+        )
         comfyStatusMessage = tip
         statusMessage = tip
 
@@ -2044,7 +2591,10 @@ class StudioViewModel: ObservableObject {
             if code == 404 {
                 comfyDownloadingWeight = false
                 comfyInstallingPackId = ""
-                let upgradeTip = "当前云端实例仍在运行旧版服务，请点左侧「唤醒实例并部署」热更新服务端（不会释放现有 G4 实例与画布），随后即可一键配齐工作流！"
+                let upgradeTip = L(
+                    "当前云端实例仍在运行旧版服务，请点左侧「唤醒实例并部署」热更新服务端（不会释放现有 G4 实例与画布），随后即可一键配齐工作流！",
+                    "The cloud instance is running an older server version. Click 'Wake & Deploy' on the left to hot-update app.py without releasing your G4 VM, then install the pack!"
+                )
                 comfyStatusMessage = upgradeTip
                 statusMessage = upgradeTip
                 return
@@ -2066,7 +2616,10 @@ class StudioViewModel: ObservableObject {
         } catch {
             comfyDownloadingWeight = false
             comfyInstallingPackId = ""
-            statusMessage = "一键配齐预置工作流包失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "一键配齐预置工作流包失败: \(error.localizedDescription)",
+                "Failed to install preset workflow pack: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -2078,12 +2631,18 @@ class StudioViewModel: ObservableObject {
             .joined(separator: "/")
         guard !base.isEmpty, let url = URL(string: "\(base)/minimax_api/comfyui/output_media/\(encodedRel)") else { return }
         comfyPullingOutputRelPath = item.rel_path
-        statusMessage = "正在从 ComfyUI 云端输出目录拉取 \(item.filename) 到本地 Mac..."
+        statusMessage = L(
+            "正在从 ComfyUI 云端输出目录拉取 \(item.filename) 到本地 Mac...",
+            "Pulling \(item.filename) from ComfyUI cloud output folder to Mac..."
+        )
         defer { comfyPullingOutputRelPath = nil }
         do {
             let (tmpURL, resp) = try await URLSession.shared.download(from: url)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-                statusMessage = "拉取成片失败: 云端文件不存在或尚未写入完成"
+                statusMessage = L(
+                    "拉取成片失败: 云端文件不存在或尚未写入完成",
+                    "Failed to pull output: remote file does not exist or is still being written"
+                )
                 return
             }
             let safeName = "comfy_" + (item.filename as NSString).lastPathComponent
@@ -2104,9 +2663,15 @@ class StudioViewModel: ObservableObject {
                 player = AVPlayer(url: dstURL)
                 player?.play()
             }
-            statusMessage = "已将 ComfyUI 成片保存至本地目录: \(dstURL.lastPathComponent)"
+            statusMessage = L(
+                "已将 ComfyUI 成片保存至本地目录: \(dstURL.lastPathComponent)",
+                "Saved ComfyUI output to local folder: \(dstURL.lastPathComponent)"
+            )
         } catch {
-            statusMessage = "下载 ComfyUI 成片失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "下载 ComfyUI 成片失败: \(error.localizedDescription)",
+                "Failed to download ComfyUI output: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -2155,14 +2720,20 @@ class StudioViewModel: ObservableObject {
         guard !base.isEmpty,
               let url = URL(string: "\(base)/minimax_api/status?model_id=\(selectedModelId)") else {
             if !silent {
-                statusMessage = "请先填入服务地址，或点击左侧「唤醒实例并部署」。"
+                statusMessage = L(
+                    "请先填入服务地址，或点击左侧「唤醒实例并部署」。",
+                    "Please enter a Server URL, or click 'Wake & Deploy' on the left."
+                )
             }
             isConnected = false
             return
         }
 
         if !silent {
-            statusMessage = "正在同步 Colab GPU 显存与 \(activeModelSpec.name) 权重状态..."
+            statusMessage = L(
+                "正在同步 Colab GPU 显存与 \(activeModelSpec.name) 权重状态...",
+                "Syncing Colab GPU VRAM & \(activeModelSpec.name) weight status..."
+            )
         }
         do {
             var req = URLRequest(url: url)
@@ -2176,7 +2747,10 @@ class StudioViewModel: ObservableObject {
                 if !silent || consecutiveStatusFailures >= 6 {
                     consecutiveStatusFailures = 0
                     resetStaleRemoteRuntimeState(
-                        reason: "云端 Colab 推理服务已停止（可能因显存溢出或实例释放），已自动重置本地显存状态；请点击左侧「唤醒实例并部署」重新启动。"
+                        reason: L(
+                            "云端 Colab 推理服务已停止（可能因显存溢出或实例释放），已自动重置本地显存状态；请点击左侧「唤醒实例并部署」重新启动。",
+                            "Cloud Colab server has stopped (OOM or runtime released). Local VRAM state reset; click 'Wake & Deploy' on the left to restart."
+                        )
                     )
                 }
                 return
@@ -2187,7 +2761,10 @@ class StudioViewModel: ObservableObject {
                 let failureLimit = isGenerating ? 8 : 5
                 if !silent || consecutiveStatusFailures >= failureLimit {
                     resetStaleRemoteRuntimeState(
-                        reason: "无法连接至 Colab 服务端 (HTTP \(statusCode))，实例可能已关闭或网络中断。"
+                        reason: L(
+                            "无法连接至 Colab 服务端 (HTTP \(statusCode))，实例可能已关闭或网络中断。",
+                            "Unable to reach Colab server (HTTP \(statusCode)). Runtime may be stopped or network disconnected."
+                        )
                     )
                 }
                 return
@@ -2199,21 +2776,36 @@ class StudioViewModel: ObservableObject {
 
             if !silent {
                 if isSelectedModelLoadedInVRAM {
-                    statusMessage = "已连接 \(gpuName) | \(activeModelSpec.name) 已驻留显存，可立即开始生成！"
+                    statusMessage = L(
+                        "已连接 \(gpuName) | \(activeModelSpec.name) 已驻留显存，可立即开始生成！",
+                        "Connected to \(gpuName) | \(activeModelSpec.name) is in VRAM and ready to generate!"
+                    )
                 } else if allDownloaded {
-                    statusMessage = "已连接 \(gpuName) | \(activeModelSpec.name) 权重已就绪 (\(String(format: "%.1f", totalDiskSizeGB)) GB)，请点击「加载到显存」。"
+                    statusMessage = L(
+                        "已连接 \(gpuName) | \(activeModelSpec.name) 权重已就绪 (\(String(format: "%.1f", totalDiskSizeGB)) GB)，请点击「加载到显存」。",
+                        "Connected to \(gpuName) | \(activeModelSpec.name) weights ready (\(String(format: "%.1f", totalDiskSizeGB)) GB). Click 'Load to VRAM'."
+                    )
                 } else {
-                    statusMessage = "已连接 \(gpuName) | \(activeModelSpec.name) 权重进度 \(downloadedCount)/\(totalFileCount)，请先点击「下载权重」。"
+                    statusMessage = L(
+                        "已连接 \(gpuName) | \(activeModelSpec.name) 权重进度 \(downloadedCount)/\(totalFileCount)，请先点击「下载权重」。",
+                        "Connected to \(gpuName) | \(activeModelSpec.name) weights \(downloadedCount)/\(totalFileCount). Click 'Download Weights' first."
+                    )
                 }
             }
         } catch {
             consecutiveStatusFailures += 1
             let failureLimit = isGenerating ? 8 : 5
             if !silent {
-                resetStaleRemoteRuntimeState(reason: "连接失败: \(error.localizedDescription)")
+                resetStaleRemoteRuntimeState(reason: L(
+                    "连接失败: \(error.localizedDescription)",
+                    "Connection failed: \(error.localizedDescription)"
+                ))
             } else if consecutiveStatusFailures >= failureLimit && isConnected {
                 resetStaleRemoteRuntimeState(
-                    reason: "与 Colab 服务端连接中断，已重置本地常驻状态；可点击「连接」重试或「唤醒实例并部署」。"
+                    reason: L(
+                        "与 Colab 服务端连接中断，已重置本地常驻状态；可点击「连接」重试或「唤醒实例并部署」。",
+                        "Disconnected from Colab server; local VRAM state reset. Click 'Connect' to retry or 'Wake & Deploy'."
+                    )
                 )
             }
         }
@@ -2237,14 +2829,17 @@ class StudioViewModel: ObservableObject {
     func startRemoteDownloadWeights() async {
         let base = normalizedBaseURL
         guard !base.isEmpty, let url = URL(string: "\(base)/minimax_api/download_model") else {
-            statusMessage = "请先连接有效的 Colab 服务端地址。"
+            statusMessage = L("请先连接有效的 Colab 服务端地址。", "Please connect to a valid Colab Server URL first.")
             return
         }
 
         let targetModel = selectedModelId
         isDownloadingWeights = true
         modelTaskProgress = 0.05
-        statusMessage = "已通知 Colab 启动 8 线程并发下载 \(activeModelSpec.name)..."
+        statusMessage = L(
+            "已通知 Colab 启动 8 线程并发下载 \(activeModelSpec.name)...",
+            "Started 8-thread parallel weight download on Colab for \(activeModelSpec.name)..."
+        )
 
         do {
             var req = URLRequest(url: url)
@@ -2273,19 +2868,25 @@ class StudioViewModel: ObservableObject {
             }
         } catch {
             isDownloadingWeights = false
-            statusMessage = "下载权重请求失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "下载权重请求失败: \(error.localizedDescription)",
+                "Weight download request failed: \(error.localizedDescription)"
+            )
         }
     }
 
     func loadRemoteModelToVRAM() async {
         let base = normalizedBaseURL
         guard !base.isEmpty, let url = URL(string: "\(base)/minimax_api/load_model") else {
-            statusMessage = "请先填入有效的 Colab 服务端地址。"
+            statusMessage = L("请先填入有效的 Colab 服务端地址。", "Please enter a valid Colab Server URL first.")
             return
         }
 
         if !allDownloaded {
-            statusMessage = "\(activeModelSpec.name) 权重尚未下载完整 (\(downloadedCount)/\(totalFileCount))，请先点击「下载权重」。"
+            statusMessage = L(
+                "\(activeModelSpec.name) 权重尚未下载完整 (\(downloadedCount)/\(totalFileCount))，请先点击「下载权重」。",
+                "\(activeModelSpec.name) weights are incomplete (\(downloadedCount)/\(totalFileCount)). Click 'Download Weights' first."
+            )
             return
         }
 
@@ -2293,9 +2894,15 @@ class StudioViewModel: ObservableObject {
         isLoadingModel = true
         modelTaskProgress = 0.15
         if activeModelSpec.modality == .llmVLM {
-            statusMessage = "正在将 \(activeModelSpec.name) 装载进 Colab GPU 显存 (上下文 \(contextLengthK)K)..."
+            statusMessage = L(
+                "正在将 \(activeModelSpec.name) 装载进 Colab GPU 显存 (上下文 \(contextLengthK)K)...",
+                "Loading \(activeModelSpec.name) into Colab GPU VRAM (Context \(contextLengthK)K)..."
+            )
         } else {
-            statusMessage = "正在将 \(activeModelSpec.name) 装载进 Colab GPU 显存..."
+            statusMessage = L(
+                "正在将 \(activeModelSpec.name) 装载进 Colab GPU 显存...",
+                "Loading \(activeModelSpec.name) into Colab GPU VRAM..."
+            )
         }
 
         do {
@@ -2330,13 +2937,16 @@ class StudioViewModel: ObservableObject {
             }
         } catch {
             isLoadingModel = false
-            statusMessage = "加载模型请求失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "加载模型请求失败: \(error.localizedDescription)",
+                "Load model request failed: \(error.localizedDescription)"
+            )
         }
     }
 
     func unloadRemoteModelFromVRAM(modelId: String) async {
         let targetLabel = modelId == "all"
-            ? "全部常驻模型"
+            ? L("全部常驻模型", "all resident models")
             : (OPEN_MODEL_CATALOG.first(where: { $0.id == modelId })?.name ?? modelId)
 
         if modelId == "all" || modelId == selectedModelId {
@@ -2347,13 +2957,19 @@ class StudioViewModel: ObservableObject {
         let base = normalizedBaseURL
         guard !base.isEmpty, let url = URL(string: "\(base)/minimax_api/unload_model") else {
             clearLocalLoadedModelRecord(modelId)
-            statusMessage = "已清理本地 \(targetLabel) 常驻记录。"
+            statusMessage = L(
+                "已清理本地 \(targetLabel) 常驻记录。",
+                "Cleared local VRAM residency record for \(targetLabel)."
+            )
             return
         }
 
         isUnloadingModel = true
         defer { isUnloadingModel = false }
-        statusMessage = "正在中断关联任务并从 GPU 显存卸载 \(targetLabel)..."
+        statusMessage = L(
+            "正在中断关联任务并从 GPU 显存卸载 \(targetLabel)...",
+            "Interrupting related tasks and unloading \(targetLabel) from GPU VRAM..."
+        )
 
         do {
             var req = URLRequest(url: url)
@@ -2369,18 +2985,30 @@ class StudioViewModel: ObservableObject {
                 if let msg = decoded.task_message, !msg.isEmpty {
                     statusMessage = msg
                 } else {
-                    statusMessage = "已从显存卸载 \(targetLabel)，当前可用显存 \(String(format: "%.1f", vramFreeGB)) GB。"
+                    statusMessage = L(
+                        "已从显存卸载 \(targetLabel)，当前可用显存 \(String(format: "%.1f", vramFreeGB)) GB。",
+                        "Unloaded \(targetLabel) from VRAM. Free VRAM: \(String(format: "%.1f", vramFreeGB)) GB."
+                    )
                 }
             } else {
                 // 远端已离线或 404，直接清理本地残留状态，绝不卡死按钮
-                resetStaleRemoteRuntimeState(reason: "远端 Colab 服务已停止，已清理本地 \(targetLabel) 显存记录。")
+                resetStaleRemoteRuntimeState(reason: L(
+                    "远端 Colab 服务已停止，已清理本地 \(targetLabel) 显存记录。",
+                    "Remote Colab server stopped; cleared local VRAM record for \(targetLabel)."
+                ))
             }
         } catch {
             clearLocalLoadedModelRecord(modelId)
             if !isConnected {
-                resetStaleRemoteRuntimeState(reason: "远端实例未连接，已移除本地 \(targetLabel) 常驻记录。")
+                resetStaleRemoteRuntimeState(reason: L(
+                    "远端实例未连接，已移除本地 \(targetLabel) 常驻记录。",
+                    "Remote instance disconnected; removed local VRAM record for \(targetLabel)."
+                ))
             } else {
-                statusMessage = "远端响应超时，已先移除本地 \(targetLabel) 常驻状态 (\(error.localizedDescription))。"
+                statusMessage = L(
+                    "远端响应超时，已先移除本地 \(targetLabel) 常驻状态 (\(error.localizedDescription))。",
+                    "Remote timed out; cleared local VRAM record for \(targetLabel) (\(error.localizedDescription))."
+                )
             }
         }
     }
@@ -2392,7 +3020,10 @@ class StudioViewModel: ObservableObject {
         progressValue = 0.0
         currentJobElapsed = 0.0
         stripConsoleProgressBars()
-        statusMessage = "已发送停止指令，正在中断云端 GPU 推理任务..."
+        statusMessage = L(
+            "已发送停止指令，正在中断云端 GPU 推理任务...",
+            "Stop signal sent. Aborting cloud GPU inference..."
+        )
 
         let base = normalizedBaseURL
         guard !base.isEmpty, let url = URL(string: "\(base)/minimax_api/cancel") else { return }
@@ -2406,42 +3037,68 @@ class StudioViewModel: ObservableObject {
                 applyStatusResponse(decoded)
             }
             stripConsoleProgressBars()
-            statusMessage = "已停止当前推理任务，GPU 已恢复就绪。"
+            statusMessage = L(
+                "已停止当前推理任务，GPU 已恢复就绪。",
+                "Stopped current inference task. GPU is ready."
+            )
         } catch {
-            statusMessage = "本地已停止；远端连接异常: \(error.localizedDescription)"
+            statusMessage = L(
+                "本地已停止；远端连接异常: \(error.localizedDescription)",
+                "Stopped locally; remote connection error: \(error.localizedDescription)"
+            )
         }
     }
 
     func startGeneration() async {
         let promptTrimmed = visualPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !promptTrimmed.isEmpty else {
-            statusMessage = activeModelSpec.modality == .llmVLM ? "请输入对话问题或视觉指令！" : "请输入画面描述提示词！"
+            statusMessage = activeModelSpec.modality == .llmVLM
+                ? L("请输入对话问题或视觉指令！", "Please enter a question or vision prompt!")
+                : L("请输入画面描述提示词！", "Please enter a visual scene prompt!")
             return
         }
 
         if taskModeId == "fl2va" && firstFrameImage == nil && lastFrameImage == nil {
-            statusMessage = "在「首尾帧生视频」模式下，请至少提供一张首帧或尾帧图片。"
+            statusMessage = L(
+                "在「首尾帧生视频」模式下，请至少提供一张首帧或尾帧图片。",
+                "In First/Last Frame mode, please provide at least a start frame or end frame image."
+            )
             return
         }
         if taskModeId == "i2v" && firstFrameImage == nil {
-            statusMessage = "在「首帧图生视频」模式下，请提供一张首帧图片。"
+            statusMessage = L(
+                "在「首帧图生视频」模式下，请提供一张首帧图片。",
+                "In Image-to-Video mode, please provide a start frame image."
+            )
             return
         }
         if taskModeId == "i2i_edit" && firstFrameImage == nil && lastFrameImage == nil {
-            statusMessage = "在「图像编辑/重绘」模式下，请至少拖入一张参考原图。"
+            statusMessage = L(
+                "在「图像编辑/重绘」模式下，请至少拖入一张参考原图。",
+                "In Image Edit / Restyle mode, please drop at least one reference image."
+            )
             return
         }
 
         await checkColabStatus(silent: true)
         guard isConnected else {
-            statusMessage = "尚未连接 Colab 服务端，请先唤醒或连接现有实例。"
+            statusMessage = L(
+                "尚未连接 Colab 服务端，请先唤醒或连接现有实例。",
+                "Not connected to Colab server. Please wake & deploy or connect to an active runtime first."
+            )
             return
         }
         guard isSelectedModelLoadedInVRAM else {
             if !allDownloaded {
-                statusMessage = "请先在左侧点击「下载权重」，再点击「加载到显存」装载 \(activeModelSpec.name)。"
+                statusMessage = L(
+                    "请先在左侧点击「下载权重」，再点击「加载到显存」装载 \(activeModelSpec.name)。",
+                    "Click 'Download Weights' first, then 'Load to VRAM' to load \(activeModelSpec.name)."
+                )
             } else {
-                statusMessage = "\(activeModelSpec.name) 尚未装载至显存，请先点击左侧「加载到显存」。"
+                statusMessage = L(
+                    "\(activeModelSpec.name) 尚未装载至显存，请先点击左侧「加载到显存」。",
+                    "\(activeModelSpec.name) is not in VRAM yet. Click 'Load to VRAM' on the left first."
+                )
             }
             return
         }
@@ -2456,7 +3113,10 @@ class StudioViewModel: ObservableObject {
         currentJobElapsed = 0.0
         stripConsoleProgressBars()
         startLiveGenerationTimer()
-        statusMessage = "正在向 Colab 提交 \(activeModelSpec.name) 推理任务 (0%)..."
+        statusMessage = L(
+            "正在向 Colab 提交 \(activeModelSpec.name) 推理任务 (0%)...",
+            "Submitting \(activeModelSpec.name) inference job to Colab (0%)..."
+        )
 
         let resOpt = activeModelSpec.modality == .image ? selectedImageResolution : selectedVideoResolution
 
@@ -2533,7 +3193,10 @@ class StudioViewModel: ObservableObject {
                 progressValue = 0.0
                 statusMessage = job.message
                 if let idx = assistantRowIndex, idx < chatHistory.count {
-                    chatHistory[idx].content = "推理失败：\(job.message)"
+                    chatHistory[idx].content = L(
+                        "推理失败：\(job.message)",
+                        "Inference failed: \(localizeServerText(job.message))"
+                    )
                 }
                 return
             }
@@ -2545,7 +3208,10 @@ class StudioViewModel: ObservableObject {
             stopLiveGenerationTimer()
             isGenerating = false
             progressValue = 0.0
-            statusMessage = "提交任务失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "提交任务失败: \(error.localizedDescription)",
+                "Failed to submit job: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -2576,7 +3242,10 @@ class StudioViewModel: ObservableObject {
                     consecutiveNotFound += 1
                     if consecutiveNotFound >= 5 {
                         resetStaleRemoteRuntimeState(
-                            reason: "云端推理进程已中断（可能因显存溢出或实例释放），请重新唤醒实例。"
+                            reason: L(
+                                "云端推理进程已中断（可能因显存溢出或实例释放），请重新唤醒实例。",
+                                "Cloud inference process interrupted (OOM or runtime released). Please wake & deploy again."
+                            )
                         )
                         break
                     }
@@ -2588,7 +3257,10 @@ class StudioViewModel: ObservableObject {
                     if consecutivePollErrors >= 12 {
                         stopLiveGenerationTimer()
                         isGenerating = false
-                        statusMessage = "云端任务响应异常 (HTTP \(code))，已自动解除等待。"
+                        statusMessage = L(
+                            "云端任务响应异常 (HTTP \(code))，已自动解除等待。",
+                            "Cloud job returned HTTP \(code); unlocked controls automatically."
+                        )
                         break
                     }
                     continue
@@ -2629,7 +3301,10 @@ class StudioViewModel: ObservableObject {
                             downloadedFilenames.insert(item.filename)
                             if job.status == "completed" && (job.batch_count ?? 1) <= 1 {
                                 progressValue = 0.99
-                                statusMessage = "云端渲染已完成，正在高速回传结果文件至本地预览 (99%)..."
+                                statusMessage = L(
+                                    "云端渲染已完成，正在高速回传结果文件至本地预览 (99%)...",
+                                    "Cloud rendering complete. Transferring output to Mac for preview (99%)..."
+                                )
                             }
                             await downloadMediaToLocal(
                                 from: downloadURL,
@@ -2655,7 +3330,10 @@ class StudioViewModel: ObservableObject {
                        let downloadURL = URL(string: "\(baseURL)\(mediaPath)") {
                         downloadedFilenames.insert(fname)
                         progressValue = 0.99
-                        statusMessage = "云端渲染已完成，正在高速回传结果文件至本地预览 (99%)..."
+                        statusMessage = L(
+                            "云端渲染已完成，正在高速回传结果文件至本地预览 (99%)...",
+                            "Cloud rendering complete. Transferring output to Mac for preview (99%)..."
+                        )
                         await downloadMediaToLocal(
                             from: downloadURL,
                             filename: fname,
@@ -2665,7 +3343,10 @@ class StudioViewModel: ObservableObject {
                     guard activeGenerationToken == token else { break }
                     if assistantRowIndex == nil, (job.batch_count ?? 1) > 1, finalElapsed > 0 {
                         let cnt = job.batch_count ?? 1
-                        statusMessage = "批量生成 \(cnt) 项全部完成 · 总耗时 \(formatDuration(finalElapsed))（均值 \(formatDuration(finalElapsed / Double(cnt)))/项）"
+                        statusMessage = L(
+                            "批量生成 \(cnt) 项全部完成 · 总耗时 \(formatDuration(finalElapsed))（均值 \(formatDuration(finalElapsed / Double(cnt)))/项）",
+                            "Batch of \(cnt) completed · Total \(formatDuration(finalElapsed)) (avg \(formatDuration(finalElapsed / Double(cnt)))/item)"
+                        )
                     }
                     stopLiveGenerationTimer()
                     isGenerating = false
@@ -2674,7 +3355,7 @@ class StudioViewModel: ObservableObject {
                     break
                 } else if job.status == "failed" {
                     if let idx = assistantRowIndex, idx < chatHistory.count, chatHistory[idx].content.isEmpty {
-                        chatHistory[idx].content = job.message
+                        chatHistory[idx].content = localizeServerText(job.message)
                     }
                     stopLiveGenerationTimer()
                     isGenerating = false
@@ -2688,7 +3369,10 @@ class StudioViewModel: ObservableObject {
                 if consecutivePollErrors >= 12 {
                     stopLiveGenerationTimer()
                     isGenerating = false
-                    statusMessage = "与云端任务失去连接，已自动解除锁定: \(error.localizedDescription)"
+                    statusMessage = L(
+                        "与云端任务失去连接，已自动解除锁定: \(error.localizedDescription)",
+                        "Lost connection to cloud job; unlocked controls automatically: \(error.localizedDescription)"
+                    )
                     await checkColabStatus(silent: true)
                     break
                 }
@@ -2717,20 +3401,34 @@ class StudioViewModel: ObservableObject {
             selectMedia(destURL)
             if !keepGeneratingProgress {
                 progressValue = 1.0
-                let kindLabel = destURL.pathExtension.lowercased() == "mp4" ? "视频" : "图像"
+                let isMP4 = destURL.pathExtension.lowercased() == "mp4"
+                let kindZh = isMP4 ? "视频" : "图像"
+                let kindEn = isMP4 ? "Video" : "Image"
                 if let el = elapsedSeconds, el > 0 {
-                    statusMessage = "\(kindLabel)生成完成 · 耗时 \(formatDuration(el)) · 已保存：\(destURL.lastPathComponent)"
+                    statusMessage = L(
+                        "\(kindZh)生成完成 · 耗时 \(formatDuration(el)) · 已保存：\(destURL.lastPathComponent)",
+                        "\(kindEn) generated in \(formatDuration(el)) · Saved: \(destURL.lastPathComponent)"
+                    )
                 } else {
-                    statusMessage = "结果已保存至本地并自动预览：\(destURL.lastPathComponent)"
+                    statusMessage = L(
+                        "结果已保存至本地并自动预览：\(destURL.lastPathComponent)",
+                        "Saved locally and opened in preview: \(destURL.lastPathComponent)"
+                    )
                 }
             }
         } catch {
-            statusMessage = "云端生成已完成，但下载至本地失败: \(error.localizedDescription)"
+            statusMessage = L(
+                "云端生成已完成，但下载至本地失败: \(error.localizedDescription)",
+                "Cloud generation finished, but local download failed: \(error.localizedDescription)"
+            )
         }
     }
 
     func disconnectRemoteColab() async {
-        statusMessage = "正在释放云端 Colab 实例并同步账户计费状态..."
+        statusMessage = L(
+            "正在释放云端 Colab 实例并同步账户计费状态...",
+            "Terminating cloud Colab instances & syncing billing status..."
+        )
         let base = normalizedBaseURL
         if !base.isEmpty, let url = URL(string: "\(base)/minimax_api/disconnect") {
             var req = URLRequest(url: url)
@@ -2746,10 +3444,16 @@ class StudioViewModel: ObservableObject {
                 officialCUBalance = decoded.paid_balance ?? officialCUBalance
                 officialBurnRate = decoded.burn_rate_hourly ?? 0.0
                 activeVMCount = decoded.active_assignments ?? 0
-                statusMessage = decoded.message ?? "已彻底释放全部云端实例，计费速率归零。"
+                statusMessage = decoded.message ?? L(
+                    "已彻底释放全部云端实例，计费速率归零。",
+                    "All cloud Colab instances terminated. Billing rate is now 0 CU/h."
+                )
             }
         } else {
-            statusMessage = "已发送释放指令，Colab 实例已停止计费。"
+            statusMessage = L(
+                "已发送释放指令，Colab 实例已停止计费。",
+                "Release command sent. Colab runtime billing stopped."
+            )
         }
 
         stopLiveGenerationTimer()
@@ -2936,7 +3640,10 @@ struct SingleMetricLineChartCard: View {
 
                 Spacer(minLength: 4)
 
-                Text("\(fmt1(usedGB))/\(fmt1(totalGB))G · 余\(fmt1(freeGB))G")
+                Text(L(
+                    "\(fmt1(usedGB))/\(fmt1(totalGB))G · 余\(fmt1(freeGB))G",
+                    "\(fmt1(usedGB))/\(fmt1(totalGB))G · \(fmt1(freeGB))G free"
+                ))
                     .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                     .foregroundStyle(isCritical ? Color.red : (isWarning ? Color.orange : Color.secondary))
                     .lineLimit(1)
@@ -3178,13 +3885,13 @@ struct CombinedMultiMetricChartCard: View {
 
             VStack(spacing: 3.5) {
                 if vramTotal > 0 {
-                    legendRow(color: vramColor, label: "显存 VRAM", pct: vPct, used: vramUsed, total: vramTotal)
+                    legendRow(color: vramColor, label: L("显存 VRAM", "VRAM"), pct: vPct, used: vramUsed, total: vramTotal)
                 }
                 if ramTotal > 0 {
-                    legendRow(color: ramColor, label: "内存 RAM", pct: rPct, used: ramUsed, total: ramTotal)
+                    legendRow(color: ramColor, label: L("内存 RAM", "System RAM"), pct: rPct, used: ramUsed, total: ramTotal)
                 }
                 if diskTotal > 0 {
-                    legendRow(color: diskColor, label: "硬盘 Disk", pct: dPct, used: diskUsed, total: diskTotal)
+                    legendRow(color: diskColor, label: L("硬盘 Disk", "Disk"), pct: dPct, used: diskUsed, total: diskTotal)
                 }
             }
         }
@@ -3269,7 +3976,7 @@ struct FrameDropWell: View {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("选择本地图片") {
+                    Button(L("选择本地图片", "Choose Image")) {
                         pickImage()
                     }
                     .controlSize(.small)
@@ -3315,45 +4022,67 @@ extension Notification.Name {
 
 private struct GuideStepMeta: Identifiable {
     let id: Int
-    let badge: String
-    let title: String
-    let subtitle: String
+    let badgeZh: String
+    let badgeEn: String
+    let titleZh: String
+    let titleEn: String
+    let subtitleZh: String
+    let subtitleEn: String
     let icon: String
+
+    var badge: String { L(badgeZh, badgeEn) }
+    var title: String { L(titleZh, titleEn) }
+    var subtitle: String { L(subtitleZh, subtitleEn) }
 }
 
 private let ONBOARDING_STEPS: [GuideStepMeta] = [
     GuideStepMeta(
         id: 0,
-        badge: "第 1 步",
-        title: "连接云端 96GB 显卡",
-        subtitle: "绑定账号 · 一键唤醒 G4 实例",
+        badgeZh: "第 1 步",
+        badgeEn: "Step 1",
+        titleZh: "连接云端 96GB 显卡",
+        titleEn: "Connect Cloud 96GB GPU",
+        subtitleZh: "绑定账号 · 一键唤醒 G4 实例",
+        subtitleEn: "Bind Google · 1-Click Wake G4 VM",
         icon: "bolt.horizontal.circle.fill"
     ),
     GuideStepMeta(
         id: 1,
-        badge: "第 2 步",
-        title: "下载与加载开源模型",
-        subtitle: "云盘永久保存 · 大内存热备共驻",
+        badgeZh: "第 2 步",
+        badgeEn: "Step 2",
+        titleZh: "下载与加载开源模型",
+        titleEn: "Download & Load Open Models",
+        subtitleZh: "云盘永久保存 · 大内存热备共驻",
+        subtitleEn: "Drive Persistence · Co-Resident VRAM",
         icon: "square.stack.3d.up.fill"
     ),
     GuideStepMeta(
         id: 2,
-        badge: "第 3 步",
-        title: "四大模式快速上手",
-        subtitle: "有声视频 · ComfyUI · 对话 · 生图",
+        badgeZh: "第 3 步",
+        badgeEn: "Step 3",
+        titleZh: "四大模式快速上手",
+        titleEn: "4 Creative Studio Modes",
+        subtitleZh: "有声视频 · ComfyUI · 对话 · 生图",
+        subtitleEn: "Video+Audio · ComfyUI · Chat · Image",
         icon: "sparkles.rectangle.stack.fill"
     ),
     GuideStepMeta(
         id: 3,
-        badge: "第 4 步",
-        title: "作品保存与省额度秘籍",
-        subtitle: "自动回传本地 · 防忘关机自动释放",
+        badgeZh: "第 4 步",
+        badgeEn: "Step 4",
+        titleZh: "作品保存与省额度秘籍",
+        titleEn: "Output Saving & CU Tips",
+        subtitleZh: "自动回传本地 · 防忘关机自动释放",
+        subtitleEn: "Auto Local Sync · Idle Auto-Release",
         icon: "checkmark.shield.fill"
     )
 ]
 
+typealias ColabGuideSheetView = ColabGuideSheet
+
 struct ColabGuideSheet: View {
     @ObservedObject var vm: StudioViewModel
+    @ObservedObject private var i18n = LanguageManager.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var currentStep: Int = 0
@@ -3417,9 +4146,9 @@ struct ColabGuideSheet: View {
                     .frame(width: 30, height: 30)
 
                     VStack(alignment: .leading, spacing: 1.5) {
-                        Text("EasyColab 指南")
+                        Text(L("EasyColab 指南", "EasyColab Guide"))
                             .font(.system(size: 14, weight: .bold, design: .rounded))
-                        Text("3 分钟零基础快速上手")
+                        Text(L("3 分钟零基础快速上手", "Get started in 3 minutes"))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -3471,19 +4200,23 @@ struct ColabGuideSheet: View {
 
                 // 左下角实时连接体检卡片
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("当前环境状态")
+                    Text(L("当前环境状态", "Environment Status"))
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(.secondary)
 
                     HStack(spacing: 6) {
                         StatusDot(color: vm.cliLoggedIn ? .green : .orange)
-                        Text(vm.cliLoggedIn ? "Google 账号：已绑定" : "Google 账号：待绑定")
+                        Text(vm.cliLoggedIn
+                             ? L("Google 账号：已绑定", "Google Account: Connected")
+                             : L("Google 账号：待绑定", "Google Account: Unbound"))
                             .font(.system(size: 11, weight: .medium))
                     }
 
                     HStack(spacing: 6) {
                         StatusDot(color: vm.isConnected ? .green : .secondary.opacity(0.5))
-                        Text(vm.isConnected ? "云端算力：\(vm.gpuName)" : "云端算力：尚未唤醒连接")
+                        Text(vm.isConnected
+                             ? L("云端算力：\(vm.displayGpuName)", "Cloud GPU: \(vm.displayGpuName)")
+                             : L("云端算力：尚未唤醒连接", "Cloud GPU: Not Connected"))
                             .font(.system(size: 11, weight: .medium))
                             .lineLimit(1)
                     }
@@ -3528,15 +4261,36 @@ struct ColabGuideSheet: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button {
-                        completeAndClose()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.secondary.opacity(0.75))
+                    HStack(spacing: 10) {
+                        Button {
+                            vm.toggleLanguage()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "globe")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(i18n.isEN ? "中文" : "EN")
+                                    .font(.system(size: 11.5, weight: .semibold))
+                            }
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+                            .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.32), lineWidth: 0.8))
+                        }
+                        .buttonStyle(.plain)
+                        .fixedSize()
+                        .help(i18n.isEN ? "切换界面为简体中文" : "Switch UI to English")
+
+                        Button {
+                            completeAndClose()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.secondary.opacity(0.75))
+                        }
+                        .buttonStyle(.plain)
+                        .help(L("关闭引导页", "Close Guide"))
                     }
-                    .buttonStyle(.plain)
-                    .help("关闭引导页")
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
@@ -3568,14 +4322,18 @@ struct ColabGuideSheet: View {
                     Image(systemName: "info.circle")
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
-                    Text("随时可点击左上角「新手引导」或顶栏「使用指南」再次打开本页")
+                    Text(L(
+                        "随时可点击左上角「新手引导」或顶栏「使用指南」再次打开本页",
+                        "Reopen anytime via 'Guide' at top-left or 'User Guide' in the top bar"
+                    ))
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
 
                     Spacer()
 
                     if currentStep > 0 {
-                        Button("上一步") {
+                        Button(L("上一步", "Previous")) {
                             withAnimation(.easeInOut(duration: 0.16)) {
                                 currentStep -= 1
                             }
@@ -3584,7 +4342,7 @@ struct ColabGuideSheet: View {
                     }
 
                     if currentStep < ONBOARDING_STEPS.count - 1 {
-                        Button("下一步") {
+                        Button(L("下一步", "Next")) {
                             withAnimation(.easeInOut(duration: 0.16)) {
                                 currentStep += 1
                             }
@@ -3593,7 +4351,7 @@ struct ColabGuideSheet: View {
                         .controlSize(.regular)
                         .keyboardShortcut(.defaultAction)
                     } else {
-                        Button("开始创作") {
+                        Button(L("开始创作", "Start Creating")) {
                             completeAndClose()
                         }
                         .buttonStyle(.borderedProminent)
@@ -3608,6 +4366,7 @@ struct ColabGuideSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(palette.workspaceCanvas)
         }
+        .id(i18n.lang)
         .frame(width: 840, height: 560)
         .onAppear {
             currentStep = max(0, min(ONBOARDING_STEPS.count - 1, vm.guideInitialStep))
@@ -3621,8 +4380,11 @@ struct ColabGuideSheet: View {
     private func stepOneConnectView(palette: StudioPalette) -> some View {
         guideInfoCard(
             number: "1",
-            title: "绑定 Google 账号（仅首次需要一次）",
-            detail: "在主界面左侧「Colab 算力实例」卡片点击「绑定」，在弹出的浏览器页面登录开通了 Colab Pro / AI Ultra 的 Google 账号并粘贴授权码。绑定后会自动同步真实剩余 CU 计算单元与 Google Drive 云盘。",
+            title: L("绑定 Google 账号（仅首次需要一次）", "Bind Your Google Account (One-Time Setup)"),
+            detail: L(
+                "在主界面左侧「Colab 算力实例」卡片点击「绑定」，在弹出的浏览器页面登录开通了 Colab Pro / AI Ultra 的 Google 账号并粘贴授权码。绑定后会自动同步真实剩余 CU 计算单元与 Google Drive 云盘。",
+                "In the left 'Colab Compute' card, click 'Bind', sign in with a Google account subscribed to Colab Pro / Pro+ / AI Ultra in your browser, and paste the authorization code. Your real CU balance and Google Drive will sync automatically."
+            ),
             palette: palette
         ) {
             if !vm.cliLoggedIn {
@@ -3630,12 +4392,12 @@ struct ColabGuideSheet: View {
                     completeAndClose()
                     Task { await vm.startGoogleOAuthLogin() }
                 } label: {
-                    Label("现在去绑定 Google 账号", systemImage: "person.crop.circle.badge.checkmark")
+                    Label(L("现在去绑定 Google 账号", "Bind Google Account Now"), systemImage: "person.crop.circle.badge.checkmark")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
             } else {
-                Label("你的 Google 账号已完成绑定", systemImage: "checkmark.circle.fill")
+                Label(L("你的 Google 账号已完成绑定", "Your Google account is connected"), systemImage: "checkmark.circle.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.green)
             }
@@ -3643,8 +4405,11 @@ struct ColabGuideSheet: View {
 
         guideInfoCard(
             number: "2",
-            title: "选择 G4 机型并点击「唤醒实例并部署」（免开网页）",
-            detail: "默认已为你选中性价比最高的 G4 机型（NVIDIA RTX PRO 6000 · 96GB 超大显存 + 176GB 系统内存）。点击蓝色「唤醒实例并部署」按钮后，客户端会自动在云端拉起实例、挂载你的 Google Drive 云盘并完成自动连接，全程约 1～2 分钟。",
+            title: L("选择 G4 机型并点击「唤醒实例并部署」（免开网页）", "Select G4 & Click 'Wake & Deploy' (Browserless)"),
+            detail: L(
+                "默认已为你选中性价比最高的 G4 机型（NVIDIA RTX PRO 6000 · 96GB 超大显存 + 176GB 系统内存）。点击蓝色「唤醒实例并部署」按钮后，客户端会自动在云端拉起实例、挂载你的 Google Drive 云盘并完成自动连接，全程约 1～2 分钟。",
+                "G4 (NVIDIA RTX PRO 6000 · 96GB VRAM + 176GB System RAM) is pre-selected for maximum price-performance. Click the blue 'Wake & Deploy' button to provision a cloud runtime, mount Google Drive, and connect automatically in ~1–2 minutes."
+            ),
             palette: palette
         ) {
             if vm.cliLoggedIn && !vm.isConnected && !vm.isWakingColab {
@@ -3652,7 +4417,7 @@ struct ColabGuideSheet: View {
                     completeAndClose()
                     Task { await vm.wakeColabHeadless() }
                 } label: {
-                    Label("立即一键唤醒 G4 并部署", systemImage: "bolt.fill")
+                    Label(L("立即一键唤醒 G4 并部署", "Wake G4 & Deploy Now"), systemImage: "bolt.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -3661,15 +4426,18 @@ struct ColabGuideSheet: View {
 
         guideInfoCard(
             number: "3",
-            title: "备选方案：通过 Google Colab 网页端手动运行笔记本",
-            detail: "若你希望在浏览器里查看原生 Notebook，也可以把同步生成的 EasyColab_Server.ipynb 上传至 Colab 网页运行，再把生成的 https://xxxx.gradio.live 地址粘贴到左侧服务地址栏点击「连接」。",
+            title: L("备选方案：通过 Google Colab 网页端手动运行笔记本", "Alternative: Run the Notebook Manually in Google Colab Web"),
+            detail: L(
+                "若你希望在浏览器里查看原生 Notebook，也可以把同步生成的 EasyColab_Server.ipynb 上传至 Colab 网页运行，再把生成的 https://xxxx.gradio.live 地址粘贴到左侧服务地址栏点击「连接」。",
+                "Prefer running a notebook in your browser? Upload EasyColab_Server.ipynb to Google Colab, run the cell, then paste the generated https://xxxx.gradio.live URL into the Server URL field on the left and click 'Connect'."
+            ),
             palette: palette
         ) {
             HStack(spacing: 10) {
                 Button {
                     revealServerNotebookInFinder()
                 } label: {
-                    Label("导出 / 定位 .ipynb 笔记本", systemImage: "folder")
+                    Label(L("导出 / 定位 .ipynb 笔记本", "Reveal .ipynb Notebook"), systemImage: "folder")
                 }
                 .controlSize(.small)
 
@@ -3678,7 +4446,7 @@ struct ColabGuideSheet: View {
                         NSWorkspace.shared.open(url)
                     }
                 } label: {
-                    Label("打开 Google Colab 官网", systemImage: "safari")
+                    Label(L("打开 Google Colab 官网", "Open Google Colab Web"), systemImage: "safari")
                 }
                 .controlSize(.small)
             }
@@ -3691,22 +4459,31 @@ struct ColabGuideSheet: View {
     private func stepTwoModelView(palette: StudioPalette) -> some View {
         guideInfoCard(
             number: "1",
-            title: "先点「下载权重」：一次存入 Google Drive，永久免重下",
-            detail: "在左侧「开源模型中心」选中你想用的模型。第一次使用时点击「下载权重」，服务端会以 8 线程极速将模型直接下载进你的 Google Drive 云盘。以后每次重新唤醒新机器，都会秒级识别云盘已有权重，无需重复下载。",
+            title: L("先点「下载权重」：一次存入 Google Drive，永久免重下", "Step 1 — 'Download Weights': Save Once to Google Drive Forever"),
+            detail: L(
+                "在左侧「开源模型中心」选中你想用的模型。第一次使用时点击「下载权重」，服务端会以 8 线程极速将模型直接下载进你的 Google Drive 云盘。以后每次重新唤醒新机器，都会秒级识别云盘已有权重，无需重复下载。",
+                "Pick a model in 'Open Model Center' on the left. Click 'Download Weights' once — the server downloads shards at 8-thread speed directly into your Google Drive. Future runtimes detect existing Drive weights instantly without re-downloading."
+            ),
             palette: palette
         ) { EmptyView() }
 
         guideInfoCard(
             number: "2",
-            title: "再点「加载到显存」：96GB 显存 + 176GB 内存热备加速",
-            detail: "权重就绪后点击「加载到显存」即可开始生成。在 G4 机型上：\n• MiniMax-H3 原生 BF16 会自动激活「双主干内存热备」，同提示词换种子 0ms 瞬回，换新提示词解析仅需约 10 秒。\n• 支持多模型同时常驻显存（例如同时驻留 Qwen3.8-GGUF 对话与生图/视频模型），也可随时在卡片上点「卸载」单独释放。",
+            title: L("再点「加载到显存」：96GB 显存 + 176GB 内存热备加速", "Step 2 — 'Load to VRAM': 96GB VRAM + 176GB RAM Hot-Standby"),
+            detail: L(
+                "权重就绪后点击「加载到显存」即可开始生成。在 G4 机型上：\n• MiniMax-H3 原生 BF16 会自动激活「双主干内存热备」，同提示词换种子 0ms 瞬回，换新提示词解析仅需约 10 秒。\n• 支持多模型同时常驻显存（例如同时驻留 Qwen3.8-GGUF 对话与生图/视频模型），也可随时在卡片上点「卸载」单独释放。",
+                "Once weights are ready, click 'Load to VRAM':\n• On G4, MiniMax-H3 Native BF16 activates dual-backbone RAM hot-standby — 0ms cache hit when changing seeds and ~10s encoding on new prompts.\n• Multiple models can co-reside in VRAM simultaneously (e.g. Qwen3.8-GGUF chat alongside image/video models) and be unloaded individually anytime."
+            ),
             palette: palette
         ) { EmptyView() }
 
         guideInfoCard(
             number: "3",
-            title: "右侧实时日志与折线图监控",
-            detail: "左下角算力卡片提供显存、系统内存与磁盘折线走势图（点切换按钮可合并/展开三线对比）；右侧独立面板实时滚动下载速率、采样步进度与预计剩余时间。",
+            title: L("右侧实时日志与折线图监控", "Live Telemetry Charts & Real-Time Run Logs"),
+            detail: L(
+                "左下角算力卡片提供显存、系统内存与磁盘折线走势图（点切换按钮可合并/展开三线对比）；右侧独立面板实时滚动下载速率、采样步进度与预计剩余时间。",
+                "The left compute card plots live VRAM, System RAM, and Disk curves (toggle between Split and Combined views), while the collapsible right log panel streams live download speeds, sampling steps, and ETA."
+            ),
             palette: palette
         ) { EmptyView() }
     }
@@ -3717,56 +4494,68 @@ struct ColabGuideSheet: View {
     private func stepThreeWorkflowsView(palette: StudioPalette) -> some View {
         guideInfoCard(
             number: "A",
-            title: "MiniMax-H3 · 4～15 秒电影级原生有声视频",
-            detail: "支持「文生有声视频」「首帧图生视频」「首尾帧生视频」三种模式。可分别填写画面描述、环境音效与背景配乐（也可点右上角「示例模板」一键填入），下方提供 4s / 5s / 8s / 10s / 12s / 15s 快捷时长按钮，直出带 32kHz 立体声的 MP4 成片。",
+            title: L("MiniMax-H3 · 4～15 秒电影级原生有声视频", "MiniMax-H3 · 4–15s Cinematic Video with Native Stereo Audio"),
+            detail: L(
+                "支持「文生有声视频」「首帧图生视频」「首尾帧生视频」三种模式。可分别填写画面描述、环境音效与背景配乐（也可点右上角「示例模板」一键填入），下方提供 4s / 5s / 8s / 10s / 12s / 15s 快捷时长按钮，直出带 32kHz 立体声的 MP4 成片。",
+                "Supports Text-to-Video+Audio, Image-to-Video, and First/Last Frame modes. Describe visual scenes, soundscapes/dialogue, and music (or insert a preset from 'Templates'), pick 4s–15s duration chips, and render MP4s with 32kHz stereo audio."
+            ),
             palette: palette
         ) {
             Button {
                 jumpToModel("minimax_h3")
             } label: {
-                Label("切换至 MiniMax-H3 视频工作台", systemImage: "film.stack")
+                Label(L("切换至 MiniMax-H3 视频工作台", "Switch to MiniMax-H3 Video Studio"), systemImage: "film.stack")
             }
             .controlSize(.small)
         }
 
         guideInfoCard(
             number: "B",
-            title: "ComfyUI 节点工作台 · 预置 4 套零基础中文傻瓜工作流",
-            detail: "不会连节点也能直接用：切到 ComfyUI -> 点击「一键部署并启动」-> 在下方「预置图生视频 / 首尾帧运镜工作流包」任选万相 Wan2.2 / MiniMax-H3 / LTX-2.3 / 混元 1.5 点「一键配齐」-> 点击打开免费公网画布 -> 左上角「工作流」菜单打开中文模板 -> 上传首尾图片点「运行」即可！所有插件、模型与工作流均自动持久化到云盘。",
+            title: L("ComfyUI 节点工作台 · 预置 4 套零基础中文傻瓜工作流", "ComfyUI Node Studio · 4 Turnkey Preset Video Workflow Packs"),
+            detail: L(
+                "不会连节点也能直接用：切到 ComfyUI -> 点击「一键部署并启动」-> 在下方「预置图生视频 / 首尾帧运镜工作流包」任选万相 Wan2.2 / MiniMax-H3 / LTX-2.3 / 混元 1.5 点「一键配齐」-> 点击打开免费公网画布 -> 左上角「工作流」菜单打开中文模板 -> 上传首尾图片点「运行」即可！所有插件、模型与工作流均自动持久化到云盘。",
+                "No node wiring required: switch to ComfyUI -> click 'Start ComfyUI' -> pick Wan2.2 / MiniMax-H3 / LTX-2.3 / Hunyuan 1.5 under Preset Workflow Packs and click '1-Click Install' -> open the fullscreen canvas -> select a template from Workflows -> upload 1–2 images and hit Run! All custom nodes, models, and workflows persist to Google Drive."
+            ),
             palette: palette
         ) {
             Button {
                 jumpToModel("comfyui_studio")
             } label: {
-                Label("切换至 ComfyUI 节点工作台", systemImage: "point.3.connected.trianglepath.dotted")
+                Label(L("切换至 ComfyUI 节点工作台", "Switch to ComfyUI Node Studio"), systemImage: "point.3.connected.trianglepath.dotted")
             }
             .controlSize(.small)
         }
 
         guideInfoCard(
             number: "C",
-            title: "Qwen3.8-27B (GGUF 100 tok/s) · 视觉对话与 Claude/OpenAI 网关",
-            detail: "推荐日常选择 GGUF 量化版（仅占约 21GB 显存，生成高达 100 tok/s，支持最高 256K 上下文与拖入图片反推提示词）。切换到「API 协议网关」标签还可一键复制兼容 OpenAI 与 Anthropic 的公网接口，直接接入 Claude Code 或 Cursor。",
+            title: L("Qwen3.8-27B (GGUF 100 tok/s) · 视觉对话与 Claude/OpenAI 网关", "Qwen3.8-27B (GGUF 100 tok/s) · Vision Chat & Claude/OpenAI API Gateway"),
+            detail: L(
+                "推荐日常选择 GGUF 量化版（仅占约 21GB 显存，生成高达 100 tok/s，支持最高 256K 上下文与拖入图片反推提示词）。切换到「API 协议网关」标签还可一键复制兼容 OpenAI 与 Anthropic 的公网接口，直接接入 Claude Code 或 Cursor。",
+                "Recommended for daily use (~21GB VRAM, up to 100 tok/s, up to 256K context, and drag-and-drop image analysis). Switch to the 'API Gateway' mode card to copy OpenAI `/v1` and Anthropic `/v1/messages` endpoints for Claude Code or Cursor."
+            ),
             palette: palette
         ) {
             Button {
                 jumpToModel("qwen38_27b_gguf")
             } label: {
-                Label("切换至 Qwen3.8-GGUF 极速对话与网关", systemImage: "bubble.left.and.bubble.right")
+                Label(L("切换至 Qwen3.8-GGUF 极速对话与网关", "Switch to Qwen3.8-GGUF Chat & Gateway"), systemImage: "bubble.left.and.bubble.right")
             }
             .controlSize(.small)
         }
 
         guideInfoCard(
             number: "D",
-            title: "Qwen-Image-2.1 / Z-Image-Turbo · 2K 海报生图与自然语言修图",
-            detail: "支持精准中英文海报排版直出，以及上传 1～2 张参考图用一句话指令改服装、换背景或融合多图主体；Z-Image-Turbo 更支持 8 步秒级出图。",
+            title: L("Qwen-Image-2.1 / Z-Image-Turbo · 2K 海报生图与自然语言修图", "Qwen-Image-2.1 / Z-Image-Turbo · 2K Poster Generation & Image Editing"),
+            detail: L(
+                "支持精准中英文海报排版直出，以及上传 1～2 张参考图用一句话指令改服装、换背景或融合多图主体；Z-Image-Turbo 更支持 8 步秒级出图。",
+                "Render crisp bilingual typography posters, or upload 1–2 reference images for natural-language outfit swaps, background replacement, and multi-subject fusion; Z-Image-Turbo delivers sub-second 8-step generation."
+            ),
             palette: palette
         ) {
             Button {
                 jumpToModel("qwen_image_21")
             } label: {
-                Label("切换至 Qwen-Image-2.1 图像工作台", systemImage: "paintbrush.pointed")
+                Label(L("切换至 Qwen-Image-2.1 图像工作台", "Switch to Qwen-Image-2.1 Image Studio"), systemImage: "paintbrush.pointed")
             }
             .controlSize(.small)
         }
@@ -3778,29 +4567,38 @@ struct ColabGuideSheet: View {
     private func stepFourSafetyView(palette: StudioPalette) -> some View {
         guideInfoCard(
             number: "1",
-            title: "生成作品自动回传 Mac 本地 + 云盘双保险",
-            detail: "所有生成的 MP4 有声视频和 PNG 高清大图都会自动下载回你的 Mac 本地影片目录（Movies/EasyColab），中间预览区可直接播放或切换历史缩略图；ComfyUI 跑出的视频也能在「极速下权重与回传成片」页一键拉回本地。",
+            title: L("生成作品自动回传 Mac 本地 + 云盘双保险", "Auto-Save Outputs to Local Mac + Google Drive Backup"),
+            detail: L(
+                "所有生成的 MP4 有声视频和 PNG 高清大图都会自动下载回你的 Mac 本地影片目录（Movies/EasyColab），中间预览区可直接播放或切换历史缩略图；ComfyUI 跑出的视频也能在「极速下权重与回传成片」页一键拉回本地。",
+                "Every generated MP4 video and PNG image downloads automatically to your Mac (`~/Movies/EasyColab`) for instant playback and history browsing; ComfyUI renders can also be pulled to your Mac in one click."
+            ),
             palette: palette
         ) {
             Button {
                 NSWorkspace.shared.open(vm.localSaveDir)
             } label: {
-                Label("打开 Mac 本地作品输出目录", systemImage: "folder")
+                Label(L("打开 Mac 本地作品输出目录", "Open Local Output Folder"), systemImage: "folder")
             }
             .controlSize(.small)
         }
 
         guideInfoCard(
             number: "2",
-            title: "开启自动休眠 + 用完点「断开并释放实例」立省 CU 额度",
-            detail: "Colab 按 GPU 在线时长消耗计算单元（CU）：\n• 左侧「算力额度与自动休眠」默认开启 30 分钟闲置看门狗，长时间离开会自动销毁虚拟机防止忘关机。\n• 当天创作结束时，建议直接点击左侧红色的「断开并释放实例」按钮，云端 GPU 立即销毁、计费瞬间归零！",
+            title: L("开启自动休眠 + 用完点「释放全部实例」立省 CU 额度", "Idle Auto-Sleep + 'Release All Instances' Saves Compute Units"),
+            detail: L(
+                "Colab 按 GPU 在线时长消耗计算单元（CU）：\n• 左侧「算力额度与自动休眠」默认开启 30 分钟闲置看门狗，长时间离开会自动销毁虚拟机防止忘关机。\n• 当天创作结束时，建议直接点击左侧红色的「释放全部实例」按钮，云端 GPU 立即销毁、计费瞬间归零！",
+                "Colab bills Compute Units (CU) while a GPU VM is online:\n• 'Compute Quota & Auto-Sleep' enables a 30-minute idle watchdog by default to auto-terminate forgotten runtimes.\n• When done for the day, click the red 'Release All Instances' button on the left to destroy cloud VMs and stop CU burn immediately!"
+            ),
             palette: palette
         ) { EmptyView() }
 
         guideInfoCard(
             number: "3",
-            title: "免费 Cloudflare 加密公网隧道说明",
-            detail: "ComfyUI 使用的 *.trycloudflare.com 随机公网链接由 Cloudflare 官方免费 Quick Tunnel 提供，0 元免注册、全程 HTTPS 加密，且每次释放 Colab 实例后自动销毁失效，安全省心。",
+            title: L("免费 Cloudflare 加密公网隧道说明", "Free Encrypted Cloudflare Quick Tunnel"),
+            detail: L(
+                "ComfyUI 使用的 *.trycloudflare.com 随机公网链接由 Cloudflare 官方免费 Quick Tunnel 提供，0 元免注册、全程 HTTPS 加密，且每次释放 Colab 实例后自动销毁失效，安全省心。",
+                "ComfyUI's random `*.trycloudflare.com` URL is powered by Cloudflare's official free Quick Tunnel — zero cost, no signup, end-to-end HTTPS encryption, and automatically invalidated whenever the Colab VM is released."
+            ),
             palette: palette
         ) { EmptyView() }
     }
@@ -3952,8 +4750,12 @@ private func fmt(_ v: Double, _ digits: Int = 2) -> String {
 
 struct MainStudioView: View {
     @StateObject private var vm = StudioViewModel()
+    @ObservedObject private var i18n = LanguageManager.shared
     @Environment(\.colorScheme) private var colorScheme
     @State private var showFileList: Bool = false
+    @State private var showNegativePrompt: Bool = false
+    @State private var openaiSnippetTab: Int = 0
+    @State private var anthropicSnippetTab: Int = 0
     @State private var showRightLogPanel: Bool = true
 
     private var isTaskStreaming: Bool {
@@ -4018,6 +4820,7 @@ struct MainStudioView: View {
                 .background(palette.logPanelBackground)
             }
         }
+        .id(i18n.lang)
         .ignoresSafeArea(.container, edges: .top)
         .background(TitlebarConfigurator(headerHeight: 40))
         .sheet(isPresented: $vm.showColabGuideSheet) {
@@ -4033,20 +4836,23 @@ struct MainStudioView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openEasyColabGuide)) { _ in
             vm.openOnboardingGuide(step: 0)
         }
-        .alert("释放所有 Colab 实例？", isPresented: $vm.showDisconnectConfirm) {
-            Button("取消", role: .cancel) {}
-            Button("释放", role: .destructive) {
+        .alert(L("释放所有 Colab 实例？", "Release All Colab Instances?"), isPresented: $vm.showDisconnectConfirm) {
+            Button(L("取消", "Cancel"), role: .cancel) {}
+            Button(L("释放", "Release"), role: .destructive) {
                 Task { await vm.disconnectRemoteColab() }
             }
         } message: {
-            Text("账号下所有运行中的 Colab GPU 实例将被销毁，计费立即归零。")
+            Text(L(
+                "账号下所有运行中的 Colab GPU 实例将被销毁，计费立即归零。",
+                "All active Colab GPU runtimes under your account will be terminated and CU billing will stop immediately."
+            ))
         }
     }
 
     // MARK: - 一体化无缝顶栏（左中右独立底色 + 1pt 贯通分界线 + 原生拖拽）
 
     private func sidebarTopHeader(palette: StudioPalette) -> some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             ZStack {
                 RoundedRectangle(cornerRadius: 5)
                     .fill(Color(red: 0.88, green: 0.95, blue: 0.98))
@@ -4070,35 +4876,65 @@ struct MainStudioView: View {
             Text("EasyColab")
                 .font(.system(size: 13.5, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize()
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            Button {
-                vm.openOnboardingGuide(step: 0)
-            } label: {
-                HStack(spacing: 3.5) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text("新手引导")
-                        .font(.system(size: 11, weight: .semibold))
+            HStack(spacing: 5) {
+                Button {
+                    vm.toggleLanguage()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "globe")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(i18n.isEN ? "中文" : "EN")
+                            .font(.system(size: 10.5, weight: .semibold))
+                    }
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        Capsule()
+                            .fill(Color.primary.opacity(0.06))
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(palette.cardBorder, lineWidth: 0.8)
+                    )
                 }
-                .foregroundStyle(Color.accentColor)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3.5)
-                .background(
-                    Capsule()
-                        .fill(Color.accentColor.opacity(0.12))
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.accentColor.opacity(0.32), lineWidth: 0.8)
-                )
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help(i18n.isEN ? "切换界面为简体中文" : "Switch UI to English")
+
+                Button {
+                    vm.openOnboardingGuide(step: 0)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(L("新手引导", "Guide"))
+                            .font(.system(size: 10.5, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 7.5)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        Capsule()
+                            .fill(Color.accentColor.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color.accentColor.opacity(0.32), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help(L("查看 EasyColab 新手入门引导与分步使用教程", "Open EasyColab quick start guide & walkthrough"))
             }
-            .buttonStyle(.plain)
-            .help("查看 EasyColab 新手入门引导与分步使用教程")
         }
-        .padding(.leading, 78)
-        .padding(.trailing, 14)
+        .padding(.leading, 76)
+        .padding(.trailing, 12)
         .frame(height: 40)
         .background(WindowDragHandle())
     }
@@ -4107,9 +4943,16 @@ struct MainStudioView: View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
                 StatusDot(color: vm.isConnected ? .green : .secondary.opacity(0.45))
-                let ramTag = vm.ramTotalGB > 0 ? " · 内存 \(fmt(vm.ramUsedGB, 1))/\(fmt(vm.ramTotalGB, 0))G" : ""
-                let diskTag = vm.diskTotalGB > 0 ? " · 磁盘可用 \(fmt(vm.diskFreeGB, 1))/\(fmt(vm.diskTotalGB, 0))G" : ""
-                Text(vm.isConnected ? "\(vm.gpuName) · 显存 \(fmt(vm.vramUsedGB, 1))/\(fmt(vm.vramTotalGB, 0))G\(ramTag)\(diskTag)" : "开源多模型云端工作台")
+                let ramTag = vm.ramTotalGB > 0
+                    ? L(" · 内存 \(fmt(vm.ramUsedGB, 1))/\(fmt(vm.ramTotalGB, 0))G", " · RAM \(fmt(vm.ramUsedGB, 1))/\(fmt(vm.ramTotalGB, 0))G")
+                    : ""
+                let diskTag = vm.diskTotalGB > 0
+                    ? L(" · 磁盘可用 \(fmt(vm.diskFreeGB, 1))/\(fmt(vm.diskTotalGB, 0))G", " · Disk Free \(fmt(vm.diskFreeGB, 1))/\(fmt(vm.diskTotalGB, 0))G")
+                    : ""
+                Text(vm.isConnected
+                     ? L("\(vm.displayGpuName) · 显存 \(fmt(vm.vramUsedGB, 1))/\(fmt(vm.vramTotalGB, 0))G\(ramTag)\(diskTag)",
+                         "\(vm.displayGpuName) · VRAM \(fmt(vm.vramUsedGB, 1))/\(fmt(vm.vramTotalGB, 0))G\(ramTag)\(diskTag)")
+                     : L("开源多模型云端工作台", "Open Multi-Model Cloud Studio"))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -4130,29 +4973,29 @@ struct MainStudioView: View {
                     }
                 }
             } label: {
-                Label("示例模板", systemImage: "text.badge.plus")
+                Label(L("示例模板", "Templates"), systemImage: "text.badge.plus")
                     .font(.system(size: 12, weight: .medium))
             }
             .controlSize(.small)
-            .help("填入当前模型精选提示词模板")
+            .help(L("填入当前模型精选提示词模板", "Insert curated prompt templates for the active model"))
 
             Button {
                 NSWorkspace.shared.open(vm.localSaveDir)
             } label: {
-                Label("本地输出目录", systemImage: "folder")
+                Label(L("本地输出目录", "Output Folder"), systemImage: "folder")
                     .font(.system(size: 12, weight: .medium))
             }
             .controlSize(.small)
-            .help("打开本地保存的视频与图像文件夹")
+            .help(L("打开本地保存的视频与图像文件夹", "Open local folder for saved videos & images"))
 
             Button {
                 vm.openOnboardingGuide(step: 0)
             } label: {
-                Label("使用指南", systemImage: "book.pages")
+                Label(L("使用指南", "User Guide"), systemImage: "book.pages")
                     .font(.system(size: 12, weight: .medium))
             }
             .controlSize(.small)
-            .help("重新打开新手引导页与完整使用指南")
+            .help(L("重新打开新手引导页与完整使用指南", "Reopen the interactive onboarding & user guide"))
 
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
@@ -4164,7 +5007,9 @@ struct MainStudioView: View {
                     .foregroundStyle(showRightLogPanel ? Color.accentColor : Color.secondary)
             }
             .controlSize(.small)
-            .help(showRightLogPanel ? "收起右侧运行日志面板" : "展开右侧运行日志面板")
+            .help(showRightLogPanel
+                  ? L("收起右侧运行日志面板", "Hide right run log panel")
+                  : L("展开右侧运行日志面板", "Show right run log panel"))
         }
         .padding(.horizontal, 18)
         .frame(height: 40)
@@ -4180,7 +5025,7 @@ struct MainStudioView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
 
-            Text("运行日志")
+            Text(L("运行日志", "Run Logs"))
                 .font(.system(size: 12.5, weight: .bold))
                 .foregroundStyle(.primary)
 
@@ -4188,7 +5033,9 @@ struct MainStudioView: View {
                 Circle()
                     .fill(isTaskStreaming ? Color.green : Color.secondary.opacity(0.45))
                     .frame(width: 5.5, height: 5.5)
-                Text(isTaskStreaming ? "实时传输" : "\(vm.liveConsoleLines.count) 行")
+                Text(isTaskStreaming
+                     ? L("实时传输", "Live")
+                     : L("\(vm.liveConsoleLines.count) 行", "\(vm.liveConsoleLines.count) lines"))
                     .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                     .foregroundStyle(isTaskStreaming ? Color.green : .secondary)
             }
@@ -4199,22 +5046,25 @@ struct MainStudioView: View {
             Spacer()
 
             Button {
-                copyToPasteboard(vm.liveConsoleLines.joined(separator: "\n"), tip: "已复制全部运行日志到剪贴板")
+                copyToPasteboard(
+                    vm.liveConsoleLines.map(localizeConsoleLine).joined(separator: "\n"),
+                    tip: L("已复制全部运行日志到剪贴板", "Copied all run logs to clipboard")
+                )
             } label: {
                 Image(systemName: "doc.on.doc")
                     .font(.system(size: 11.5, weight: .medium))
             }
             .buttonStyle(.borderless)
-            .help("复制全部日志")
+            .help(L("复制全部日志", "Copy all logs"))
 
             Button {
-                vm.liveConsoleLines = ["已清空历史输出，正在监听云端实时日志..."]
+                vm.liveConsoleLines = [L(StudioViewModel.clearedConsoleLineZh, StudioViewModel.clearedConsoleLineEn)]
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 11.5, weight: .medium))
             }
             .buttonStyle(.borderless)
-            .help("清空当前日志")
+            .help(L("清空当前日志", "Clear console logs"))
         }
         .padding(.horizontal, 14)
         .frame(height: 40)
@@ -4229,26 +5079,37 @@ struct MainStudioView: View {
     private func sidebarPanel(palette: StudioPalette) -> some View {
         ScrollView {
             VStack(spacing: 12) {
-                SidebarCard(title: "Colab 算力实例", icon: "cpu", badge: vm.isConnected ? "在线" : "离线") {
+                SidebarCard(
+                    title: L("Colab 算力实例", "Colab Compute Instance"),
+                    icon: "cpu",
+                    badge: vm.isConnected ? L("在线", "Online") : L("离线", "Offline")
+                ) {
                     colabConnectionRows
                 }
 
-                SidebarCard(title: "算力额度与自动休眠", icon: "gauge.with.dots.needle.33percent") {
+                SidebarCard(
+                    title: L("算力额度与自动休眠", "Compute Quota & Auto-Sleep"),
+                    icon: "gauge.with.dots.needle.33percent"
+                ) {
                     usageRows
                 }
 
                 SidebarCard(
-                    title: "开源模型中心",
+                    title: L("开源模型中心", "Open Model Center"),
                     icon: "square.stack.3d.up",
-                    badge: vm.loadedModelIds.isEmpty ? "HF Top \(OPEN_MODEL_CATALOG.count)" : "共驻 \(vm.loadedModelIds.count) 模型"
+                    badge: vm.loadedModelIds.isEmpty
+                        ? "HF Top \(OPEN_MODEL_CATALOG.count)"
+                        : L("共驻 \(vm.loadedModelIds.count) 模型", "\(vm.loadedModelIds.count) in VRAM")
                 ) {
                     openModelHubRows(palette: palette)
                 }
 
                 SidebarCard(
                     title: vm.activeModelSpec.modality == .comfyUI
-                        ? "ComfyUI 云盘持久化与控制"
-                        : (vm.activeModelSpec.modality == .llmVLM ? "推理与对话参数" : "规格与采样参数"),
+                        ? L("ComfyUI 云盘持久化与控制", "ComfyUI Persistence & Controls")
+                        : (vm.activeModelSpec.modality == .llmVLM
+                           ? L("推理与对话参数", "Reasoning & Chat Params")
+                           : L("规格与采样参数", "Specs & Sampling Params")),
                     icon: vm.activeModelSpec.modality == .comfyUI ? "externaldrive.badge.icloud" : "slider.horizontal.3"
                 ) {
                     adaptiveParamRows
@@ -4262,7 +5123,7 @@ struct MainStudioView: View {
     @ViewBuilder
     private var colabConnectionRows: some View {
         HStack(spacing: 6) {
-            Text("Google 账号")
+            Text(L("Google 账号", "Google Account"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 4)
@@ -4271,44 +5132,48 @@ struct MainStudioView: View {
                 .foregroundStyle(vm.cliLoggedIn ? Color.green : Color.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .help(vm.accountEmail.isEmpty ? "当前 Google 账号状态" : vm.displayAccountLabel)
+                .help(vm.accountEmail.isEmpty ? L("当前 Google 账号状态", "Google account connection status") : vm.displayAccountLabel)
 
             if vm.cliLoggedIn {
-                Button("刷新") { Task { await vm.refreshOfficialColabAccountUsage() } }
+                Button(L("刷新", "Refresh")) { Task { await vm.refreshOfficialColabAccountUsage() } }
                     .controlSize(.small)
 
                 Menu {
                     Button {
                         Task { await vm.startGoogleOAuthLogin(switchingAccount: true) }
                     } label: {
-                        Label("切换 Google 账号...", systemImage: "arrow.triangle.2.circlepath")
+                        Label(L("切换 Google 账号...", "Switch Google Account..."), systemImage: "arrow.triangle.2.circlepath")
                     }
                     Divider()
                     Button(role: .destructive) {
                         Task { await vm.logoutGoogleAccount() }
                     } label: {
-                        Label("退出当前账号", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(L("退出当前账号", "Sign Out"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } label: {
-                    Text("换号")
+                    Text(L("换号", "Account"))
                 }
                 .controlSize(.small)
                 .fixedSize()
-                .help("切换其他 Google 账号或退出当前绑定")
+                .help(L("切换其他 Google 账号或退出当前绑定", "Switch to another Google account or sign out"))
             } else {
-                Button("绑定") { Task { await vm.startGoogleOAuthLogin() } }
+                Button(L("绑定", "Bind")) { Task { await vm.startGoogleOAuthLogin() } }
                     .controlSize(.small)
             }
         }
 
         if vm.showOAuthCodeInput {
             HStack(spacing: 6) {
-                TextField("授权码", text: $vm.oauthCodeText, prompt: Text("粘贴浏览器显示的授权码"))
+                TextField(
+                    L("授权码", "Auth Code"),
+                    text: $vm.oauthCodeText,
+                    prompt: Text(L("粘贴浏览器显示的授权码", "Paste auth code from browser"))
+                )
                     .textFieldStyle(.roundedBorder)
-                Button("确认") { Task { await vm.submitGoogleOAuthCode() } }
+                Button(L("确认", "Confirm")) { Task { await vm.submitGoogleOAuthCode() } }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                Button("取消") {
+                Button(L("取消", "Cancel")) {
                     vm.showOAuthCodeInput = false
                     vm.oauthCodeText = ""
                 }
@@ -4318,7 +5183,7 @@ struct MainStudioView: View {
 
         if vm.cliLoggedIn {
             HStack(spacing: 8) {
-                Picker("机型", selection: $vm.wakeGPUChoice) {
+                Picker(L("机型", "GPU"), selection: $vm.wakeGPUChoice) {
                     Text("G4 · PRO 6000").tag("G4")
                     Text("H100 · 80GB").tag("H100")
                     Text("A100 · 80GB").tag("A100")
@@ -4327,7 +5192,10 @@ struct MainStudioView: View {
                 }
                 .labelsHidden()
                 .frame(width: 138)
-                .help("默认推荐 G4 (NVIDIA RTX PRO 6000 Blackwell · 96GB 显存)")
+                .help(L(
+                    "默认推荐 G4 (NVIDIA RTX PRO 6000 Blackwell · 96GB 显存)",
+                    "Recommended: G4 (NVIDIA RTX PRO 6000 Blackwell · 96GB VRAM)"
+                ))
 
                 Button {
                     Task { await vm.wakeColabHeadless() }
@@ -4339,7 +5207,9 @@ struct MainStudioView: View {
                             Image(systemName: "bolt.fill")
                                 .font(.caption)
                         }
-                        Text(vm.isWakingColab ? "唤醒部署中..." : "唤醒实例并部署")
+                        Text(vm.isWakingColab
+                             ? L("唤醒部署中...", "Deploying...")
+                             : L("唤醒实例并部署", "Wake & Deploy"))
                             .fontWeight(.medium)
                     }
                     .frame(maxWidth: .infinity)
@@ -4352,9 +5222,17 @@ struct MainStudioView: View {
         HStack(spacing: 6) {
             Group {
                 if vm.maskServerURL {
-                    SecureField("服务地址", text: $vm.colabServerURL, prompt: Text("已开启打码保护"))
+                    SecureField(
+                        L("服务地址", "Server URL"),
+                        text: $vm.colabServerURL,
+                        prompt: Text(L("已开启打码保护", "URL Redacted"))
+                    )
                 } else {
-                    TextField("服务地址", text: $vm.colabServerURL, prompt: Text("https://xxxx.gradio.live"))
+                    TextField(
+                        L("服务地址", "Server URL"),
+                        text: $vm.colabServerURL,
+                        prompt: Text("https://xxxx.gradio.live")
+                    )
                 }
             }
             .textFieldStyle(.roundedBorder)
@@ -4367,9 +5245,11 @@ struct MainStudioView: View {
                     .foregroundStyle(vm.maskServerURL ? Color.accentColor : Color.secondary)
             }
             .buttonStyle(.borderless)
-            .help(vm.maskServerURL ? "取消打码，显示真实隧道地址" : "录屏/截图防泄密：打码隐藏公网隧道地址")
+            .help(vm.maskServerURL
+                  ? L("取消打码，显示真实隧道地址", "Reveal tunnel URL")
+                  : L("录屏/截图防泄密：打码隐藏公网隧道地址", "Privacy mode: redact public tunnel URL for screenshots"))
 
-            Button(vm.isConnected ? "刷新" : "连接") {
+            Button(vm.isConnected ? L("刷新", "Refresh") : L("连接", "Connect")) {
                 Task { await vm.checkColabStatus() }
             }
             .controlSize(.small)
@@ -4379,18 +5259,18 @@ struct MainStudioView: View {
                 Image(systemName: "questionmark.circle")
             }
             .buttonStyle(.borderless)
-            .help("打开新手引导与部署指南")
+            .help(L("打开新手引导与部署指南", "Open quick start & deployment guide"))
         }
 
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 StatusDot(color: vm.isConnected ? .green : .orange)
-                Text(vm.gpuName)
+                Text(vm.displayGpuName)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 if vm.drivePersisted {
-                    Text("云盘持久化")
+                    Text(L("云盘持久化", "Drive Persisted"))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
@@ -4406,7 +5286,7 @@ struct MainStudioView: View {
                         HStack(spacing: 3) {
                             Image(systemName: vm.combinedTelemetryChartMode ? "rectangle.split.1x2" : "chart.xyaxis.line")
                                 .font(.system(size: 9.5, weight: .semibold))
-                            Text(vm.combinedTelemetryChartMode ? "分项" : "同屏")
+                            Text(vm.combinedTelemetryChartMode ? L("分项", "Split") : L("同屏", "Combined"))
                                 .font(.system(size: 10, weight: .medium))
                         }
                         .foregroundStyle(Color.accentColor)
@@ -4418,7 +5298,9 @@ struct MainStudioView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .help(vm.combinedTelemetryChartMode ? "切换为显存/内存/硬盘独立折线面积图" : "切换为显存/内存/硬盘三线同屏对比图")
+                    .help(vm.combinedTelemetryChartMode
+                          ? L("切换为显存/内存/硬盘独立折线面积图", "Switch to separate VRAM / RAM / Disk area charts")
+                          : L("切换为显存/内存/硬盘三线同屏对比图", "Switch to combined 3-line telemetry comparison chart"))
                 }
             }
 
@@ -4435,11 +5317,12 @@ struct MainStudioView: View {
                         diskTotal: vm.diskTotalGB,
                         diskSamples: vm.diskHistoryPct
                     )
+                    .help(L("三线实时对比：显存 VRAM / 系统内存 RAM / 硬盘 Disk", "Live 3-metric comparison: VRAM / System RAM / Disk"))
                 } else {
                     VStack(spacing: 5.5) {
                         if vm.vramTotalGB > 0 {
                             SingleMetricLineChartCard(
-                                title: "显存 VRAM",
+                                title: L("显存 VRAM", "VRAM"),
                                 usedGB: vm.vramUsedGB,
                                 freeGB: vm.vramFreeGB,
                                 totalGB: vm.vramTotalGB,
@@ -4448,10 +5331,11 @@ struct MainStudioView: View {
                                 isWarning: vm.vramFreeGB < 8.0,
                                 isCritical: vm.vramFreeGB < 3.0
                             )
+                            .help(L("悬停查看历史显存占用曲线", "Hover to inspect historical GPU VRAM usage"))
                         }
                         if vm.ramTotalGB > 0 {
                             SingleMetricLineChartCard(
-                                title: "内存 RAM",
+                                title: L("内存 RAM", "System RAM"),
                                 usedGB: vm.ramUsedGB,
                                 freeGB: vm.ramFreeGB,
                                 totalGB: vm.ramTotalGB,
@@ -4460,10 +5344,11 @@ struct MainStudioView: View {
                                 isWarning: vm.ramFreeGB < 10.0,
                                 isCritical: vm.ramFreeGB < 5.0
                             )
+                            .help(L("悬停查看系统内存与热备占用曲线", "Hover to inspect system RAM & hot-standby usage"))
                         }
                         if vm.diskTotalGB > 0 {
                             SingleMetricLineChartCard(
-                                title: "硬盘 Disk",
+                                title: L("硬盘 Disk", "Disk"),
                                 usedGB: vm.diskUsedGB,
                                 freeGB: vm.diskFreeGB,
                                 totalGB: vm.diskTotalGB,
@@ -4472,6 +5357,7 @@ struct MainStudioView: View {
                                 isWarning: vm.diskFreeGB < 20.0,
                                 isCritical: vm.diskFreeGB < 10.0
                             )
+                            .help(L("悬停查看本地实例 NVMe 磁盘空间曲线", "Hover to inspect instance NVMe disk usage"))
                         }
                     }
                 }
@@ -4479,11 +5365,17 @@ struct MainStudioView: View {
                 if vm.shmTotalGB >= 1.0 || vm.driveTotalGB > 0 {
                     HStack(spacing: 6) {
                         if vm.shmTotalGB >= 1.0 {
-                            Text("内存盘可用 \(fmt(vm.shmFreeGB, 1))/\(fmt(vm.shmTotalGB, 0))G")
+                            Text(L(
+                                "内存盘可用 \(fmt(vm.shmFreeGB, 1))/\(fmt(vm.shmTotalGB, 0))G",
+                                "/dev/shm Free \(fmt(vm.shmFreeGB, 1))/\(fmt(vm.shmTotalGB, 0))G"
+                            ))
                         }
                         Spacer()
                         if vm.driveTotalGB > 0 {
-                            Text("云盘可用 \(fmt(vm.driveFreeGB, 1))G")
+                            Text(L(
+                                "云盘可用 \(fmt(vm.driveFreeGB, 1))G",
+                                "Drive Free \(fmt(vm.driveFreeGB, 1))G"
+                            ))
                         }
                     }
                     .font(.system(size: 10.5))
@@ -4500,19 +5392,19 @@ struct MainStudioView: View {
     private var usageRows: some View {
         HStack(spacing: 0) {
             metricColumn(
-                title: vm.officialCUBalance != nil ? "账户余额" : "预计余额",
+                title: vm.officialCUBalance != nil ? L("账户余额", "CU Balance") : L("预计余额", "Est. Balance"),
                 value: "\(fmt(vm.displayRemainingCU)) CU",
                 highlight: .primary
             )
             Divider().frame(height: 28)
             metricColumn(
-                title: "扣费速率",
+                title: L("扣费速率", "Burn Rate"),
                 value: "\(fmt(vm.displayBurnRate)) CU/h",
                 highlight: vm.displayBurnRate > 0 ? .orange : .secondary
             )
             Divider().frame(height: 28)
             metricColumn(
-                title: "本次运行",
+                title: L("本次运行", "Uptime"),
                 value: vm.formattedUptime,
                 highlight: .secondary
             )
@@ -4520,18 +5412,18 @@ struct MainStudioView: View {
         .padding(.vertical, 4)
 
         HStack {
-            Text("闲置自动释放")
+            Text(L("闲置自动释放", "Idle Auto-Sleep"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Picker("闲置自动释放", selection: Binding(
+            Picker(L("闲置自动释放", "Idle Auto-Sleep"), selection: Binding(
                 get: { vm.idleTimeoutMinutes },
                 set: { newVal in Task { await vm.updateIdleTimeoutConfig(newVal) } }
             )) {
-                Text("15 分钟").tag(15)
-                Text("30 分钟").tag(30)
-                Text("60 分钟").tag(60)
-                Text("关闭").tag(0)
+                Text(L("15 分钟", "15m")).tag(15)
+                Text(L("30 分钟", "30m")).tag(30)
+                Text(L("60 分钟", "60m")).tag(60)
+                Text(L("关闭", "Off")).tag(0)
             }
             .labelsHidden()
             .controlSize(.small)
@@ -4550,7 +5442,9 @@ struct MainStudioView: View {
             HStack(spacing: 5) {
                 Image(systemName: "power")
                     .font(.caption)
-                Text(vm.activeVMCount > 0 ? "释放全部实例 (\(vm.activeVMCount) 台运行中)" : "释放全部实例")
+                Text(vm.activeVMCount > 0
+                     ? L("释放全部实例 (\(vm.activeVMCount) 台运行中)", "Release All Instances (\(vm.activeVMCount) Running)")
+                     : L("释放全部实例", "Release All Instances"))
             }
             .frame(maxWidth: .infinity)
         }
@@ -4598,14 +5492,14 @@ struct MainStudioView: View {
                                     .font(.system(size: 12.5, weight: .semibold))
                                     .foregroundStyle(.primary)
                                 if spec.modality == .comfyUI && vm.comfyRunning {
-                                    Text(vm.comfyQueueRunning > 0 ? "渲染中" : "画布在线")
+                                    Text(vm.comfyQueueRunning > 0 ? L("渲染中", "Rendering") : L("画布在线", "Canvas Live"))
                                         .font(.system(size: 9.5, weight: .bold))
                                         .foregroundStyle(Color.green)
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 1)
                                         .background(Capsule().fill(Color.green.opacity(0.15)))
                                 } else if isLoaded {
-                                    Text("显存常驻")
+                                    Text(L("显存常驻", "In VRAM"))
                                         .font(.system(size: 9.5, weight: .bold))
                                         .foregroundStyle(Color.green)
                                         .padding(.horizontal, 5)
@@ -4647,12 +5541,15 @@ struct MainStudioView: View {
                     Image(systemName: "memorychip.fill")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.green)
-                    Text("GPU 显存共驻模型 (\(vm.loadedModelsDetail.count))")
+                    Text(L(
+                        "GPU 显存共驻模型 (\(vm.loadedModelsDetail.count))",
+                        "Co-Resident in VRAM (\(vm.loadedModelsDetail.count))"
+                    ))
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
                     if vm.loadedModelsDetail.count > 1 {
-                        Button("全部释放") {
+                        Button(L("全部释放", "Unload All")) {
                             Task { await vm.unloadRemoteModelFromVRAM(modelId: "all") }
                         }
                         .buttonStyle(.borderless)
@@ -4664,7 +5561,7 @@ struct MainStudioView: View {
                 ForEach(vm.loadedModelsDetail) { item in
                     HStack(spacing: 6) {
                         StatusDot(color: .green)
-                        Text(item.name)
+                        Text(item.localizedName)
                             .font(.system(size: 11, weight: .medium))
                             .lineLimit(1)
                         Spacer(minLength: 4)
@@ -4689,7 +5586,7 @@ struct MainStudioView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .help("从 GPU 显存卸载 \(item.name)")
+                        .help(L("从 GPU 显存卸载 \(item.localizedName)", "Unload \(item.localizedName) from GPU VRAM"))
                         .disabled(vm.isUnloadingModel)
                     }
                     .padding(.horizontal, 7)
@@ -4705,11 +5602,13 @@ struct MainStudioView: View {
         if vm.activeModelSpec.modality == .comfyUI {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("画布状态")
+                    Text(L("画布状态", "Canvas Status"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(vm.comfyRunning ? "在线 (端口 8188)" : (vm.comfyStarting ? "部署启动中..." : "未启动"))
+                    Text(vm.comfyRunning
+                         ? L("在线 (端口 8188)", "Online (Port 8188)")
+                         : (vm.comfyStarting ? L("部署启动中...", "Starting...") : L("未启动", "Stopped")))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(vm.comfyRunning ? Color.green : (vm.comfyStarting ? Color.orange : Color.secondary))
                 }
@@ -4723,7 +5622,7 @@ struct MainStudioView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "safari")
-                                Text("打开画布")
+                                Text(L("打开画布", "Open Canvas"))
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -4736,7 +5635,7 @@ struct MainStudioView: View {
                             Image(systemName: "stop.fill")
                         }
                         .controlSize(.regular)
-                        .help("同步云盘并停止 ComfyUI 进程")
+                        .help(L("同步云盘并停止 ComfyUI 进程", "Sync to Google Drive & stop ComfyUI process"))
                     } else {
                         Button {
                             Task { await vm.startRemoteComfyUI(forceRestart: false, autoOpenBrowser: true) }
@@ -4747,7 +5646,7 @@ struct MainStudioView: View {
                                 } else {
                                     Image(systemName: "play.circle.fill")
                                 }
-                                Text(vm.comfyStarting ? "正在部署..." : "启动 ComfyUI 画布")
+                                Text(vm.comfyStarting ? L("正在部署...", "Deploying...") : L("启动 ComfyUI 画布", "Start ComfyUI Canvas"))
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -4758,178 +5657,230 @@ struct MainStudioView: View {
                 }
             }
         } else {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("HF 仓库")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(vm.activeModelSpec.repoId)
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            HStack {
-                Text("磁盘权重")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(vm.allDownloaded
-                     ? "已就绪 \(vm.downloadedCount)/\(vm.totalFileCount) (\(fmt(vm.totalDiskSizeGB, 1)) GB)"
-                     : "\(vm.downloadedCount)/\(vm.totalFileCount) 个文件")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(vm.allDownloaded ? Color.green : Color.secondary)
-                    .monospacedDigit()
-            }
-
-            DisclosureGroup("查看权重分片 (\(vm.modelFiles.count))", isExpanded: $showFileList) {
-                ScrollView {
-                    VStack(spacing: 3) {
-                        ForEach(vm.modelFiles) { file in
-                            HStack(spacing: 5) {
-                                Image(systemName: file.exists ? "checkmark.circle.fill" : "circle.dashed")
-                                    .foregroundStyle(file.exists ? Color.green : Color.secondary)
-                                    .font(.system(size: 10))
-                                Text(file.name)
-                                    .font(.system(size: 10.5, design: .monospaced))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer()
-                                Text(file.exists ? "\(fmt(file.size_gb, 1))G" : "未下")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-                .frame(maxHeight: 115)
-            }
-            .font(.caption)
-
-            if vm.activeModelSpec.modality == .llmVLM {
-                let presetKs = [8, 16, 32, 64, 128, 192, 256]
-                let pickerKs = presetKs.contains(vm.contextLengthK)
-                    ? presetKs
-                    : (presetKs + [vm.contextLengthK]).sorted()
-
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("上下文长度")
+                    Text(L("HF 仓库", "HF Repo"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Picker("上下文长度", selection: Binding(
-                        get: { vm.contextLengthK },
-                        set: { newK in
-                            vm.contextLengthK = newK.clamped(to: 4...256)
-                            Task { await vm.syncContextLengthToColab(announce: true) }
-                        }
-                    )) {
-                        ForEach(pickerKs, id: \.self) { k in
-                            Text(k == 256 ? "256K (最大)" : "\(k)K (\(k * 1024))").tag(k)
-                        }
-                    }
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .frame(width: 148)
-                }
-
-                if vm.selectedModelId == "qwen38_27b_gguf",
-                   vm.isSelectedModelLoadedInVRAM,
-                   vm.loadedContextLengthTokens > 0,
-                   vm.loadedContextLengthTokens != vm.contextLengthTokens {
-                    Text("当前显存 KV 为 \(vm.loadedContextLengthTokens / 1024)K，点「重新装载」切换至 \(vm.contextLengthK)K")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.orange)
-                } else if vm.selectedModelId == "qwen38_27b_gguf", vm.contextLengthK >= 128 {
-                    Text("提示：日常对话选 32K/64K 可达峰值 90~110 tok/s；256K 预分配超长槽位约为 80+ tok/s")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if !vm.isConnected {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                    Text("Colab 实例离线（已闲置释放或未连接）")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.orange)
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    if vm.cliLoggedIn {
-                        Button(vm.isWakingColab ? "唤醒中..." : "一键唤醒") {
-                            Task { await vm.wakeColabHeadless() }
-                        }
-                        .controlSize(.mini)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(vm.isWakingColab)
-                    } else if !vm.normalizedBaseURL.isEmpty {
-                        Button("重连") {
-                            Task { await vm.checkColabStatus() }
-                        }
-                        .controlSize(.mini)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.orange.opacity(0.10)))
-            }
-
-            if vm.isDownloadingWeights || vm.isLoadingModel {
-                ProgressView(value: vm.modelTaskProgress, total: 1.0)
-            }
-
-            HStack(spacing: 6) {
-                Button {
-                    Task { await vm.startRemoteDownloadWeights() }
-                } label: {
-                    HStack(spacing: 4) {
-                        if vm.isDownloadingWeights {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.down.circle")
-                        }
-                        Text(vm.isDownloadingWeights ? "下载中..." : (vm.allDownloaded ? "校验权重" : "下载权重"))
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .controlSize(.regular)
-                .disabled(!vm.isConnected || vm.isDownloadingWeights || vm.isLoadingModel || vm.isUnloadingModel)
-
-                Button {
-                    Task { await vm.loadRemoteModelToVRAM() }
-                } label: {
-                    HStack(spacing: 4) {
-                        if vm.isLoadingModel {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "memorychip")
-                        }
-                        Text(vm.isLoadingModel ? "装载中..." : (vm.isSelectedModelLoadedInVRAM ? "重新装载" : "加载到显存"))
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .disabled(!vm.isConnected || vm.isDownloadingWeights || vm.isLoadingModel || vm.isUnloadingModel)
-
-                if vm.isSelectedModelLoadedInVRAM {
                     Button {
-                        Task { await vm.unloadRemoteModelFromVRAM(modelId: vm.selectedModelId) }
+                        if let hfURL = URL(string: "https://huggingface.co/\(vm.activeModelSpec.repoId)") {
+                            NSWorkspace.shared.open(hfURL)
+                        }
                     } label: {
-                        Image(systemName: "eject.fill")
+                        HStack(spacing: 3) {
+                            Text(vm.activeModelSpec.repoId)
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.system(size: 9.5))
+                        }
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("在浏览器打开 HuggingFace 模型仓库", "Open HuggingFace model repository in browser"))
+                }
+
+                HStack {
+                    Text(L("磁盘权重", "Disk Weights"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(vm.allDownloaded
+                         ? L("已就绪 \(vm.downloadedCount)/\(vm.totalFileCount) (\(fmt(vm.totalDiskSizeGB, 1)) GB)",
+                             "Ready \(vm.downloadedCount)/\(vm.totalFileCount) (\(fmt(vm.totalDiskSizeGB, 1)) GB)")
+                         : L("\(vm.downloadedCount)/\(vm.totalFileCount) 个文件",
+                             "\(vm.downloadedCount)/\(vm.totalFileCount) files"))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(vm.allDownloaded ? Color.green : Color.secondary)
+                        .monospacedDigit()
+                }
+
+                DisclosureGroup(
+                    L("查看权重分片 (\(vm.modelFiles.count))", "View Weight Shards (\(vm.modelFiles.count))"),
+                    isExpanded: $showFileList
+                ) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ScrollView {
+                            VStack(spacing: 4) {
+                                ForEach(vm.modelFiles) { file in
+                                    HStack(spacing: 5) {
+                                        Image(systemName: file.exists ? "checkmark.circle.fill" : "circle.dashed")
+                                            .foregroundStyle(file.exists ? Color.green : Color.secondary)
+                                            .font(.system(size: 10))
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(file.name)
+                                                .font(.system(size: 10.5, design: .monospaced))
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+                                            if let desc = file.localizedDesc, !desc.isEmpty {
+                                                Text(desc)
+                                                    .font(.system(size: 9.5))
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        Spacer()
+                                        Text(file.exists ? "\(fmt(file.size_gb, 1))G" : L("未下", "Pending"))
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                    }
+                                    .help(file.localizedDesc ?? file.name)
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                        .frame(maxHeight: 125)
+
+                        HStack(spacing: 6) {
+                            Text("HF Token")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                            SecureField(
+                                "HF Token",
+                                text: $vm.hfToken,
+                                prompt: Text(L("可选，加速下载或访问受限仓库", "Optional, faster / gated repos"))
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.small)
+                            .font(.system(size: 11, design: .monospaced))
+                        }
+                    }
+                }
+                .font(.caption)
+
+                if vm.activeModelSpec.modality == .llmVLM {
+                    let presetKs = [8, 16, 32, 64, 128, 192, 256]
+                    let pickerKs = presetKs.contains(vm.contextLengthK)
+                        ? presetKs
+                        : (presetKs + [vm.contextLengthK]).sorted()
+
+                    HStack {
+                        Text(L("上下文长度", "Context Length"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Picker(L("上下文长度", "Context Length"), selection: Binding(
+                            get: { vm.contextLengthK },
+                            set: { newK in
+                                vm.contextLengthK = newK.clamped(to: 4...256)
+                                Task { await vm.syncContextLengthToColab(announce: true) }
+                            }
+                        )) {
+                            ForEach(pickerKs, id: \.self) { k in
+                                Text(k == 256 ? L("256K (最大)", "256K (Max)") : "\(k)K (\(k * 1024))").tag(k)
+                            }
+                        }
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .frame(width: 148)
+                    }
+
+                    if vm.selectedModelId == "qwen38_27b_gguf",
+                       vm.isSelectedModelLoadedInVRAM,
+                       vm.loadedContextLengthTokens > 0,
+                       vm.loadedContextLengthTokens != vm.contextLengthTokens {
+                        Text(L(
+                            "当前显存 KV 为 \(vm.loadedContextLengthTokens / 1024)K，点「重新装载」切换至 \(vm.contextLengthK)K",
+                            "VRAM KV cache is \(vm.loadedContextLengthTokens / 1024)K; click 'Reload' to apply \(vm.contextLengthK)K"
+                        ))
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.orange)
+                    } else if vm.selectedModelId == "qwen38_27b_gguf", vm.contextLengthK >= 128 {
+                        Text(L(
+                            "提示：日常对话选 32K/64K 可达峰值 90~110 tok/s；256K 预分配超长槽位约为 80+ tok/s",
+                            "Tip: 32K/64K hits peak 90–110 tok/s; 256K pre-allocated context runs at ~80+ tok/s"
+                        ))
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !vm.isConnected {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                        Text(L("Colab 实例离线（已闲置释放或未连接）", "Colab offline (idle-released or disconnected)"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        if vm.cliLoggedIn {
+                            Button(vm.isWakingColab ? L("唤醒中...", "Waking...") : L("一键唤醒", "Wake")) {
+                                Task { await vm.wakeColabHeadless() }
+                            }
+                            .controlSize(.mini)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(vm.isWakingColab)
+                        } else if !vm.normalizedBaseURL.isEmpty {
+                            Button(L("重连", "Reconnect")) {
+                                Task { await vm.checkColabStatus() }
+                            }
+                            .controlSize(.mini)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.orange.opacity(0.10)))
+                }
+
+                if vm.isDownloadingWeights || vm.isLoadingModel {
+                    ProgressView(value: vm.modelTaskProgress, total: 1.0)
+                }
+
+                HStack(spacing: 6) {
+                    Button {
+                        Task { await vm.startRemoteDownloadWeights() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if vm.isDownloadingWeights {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.down.circle")
+                            }
+                            Text(vm.isDownloadingWeights
+                                 ? L("下载中...", "Downloading...")
+                                 : (vm.allDownloaded ? L("校验权重", "Verify Weights") : L("下载权重", "Download Weights")))
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                     .controlSize(.regular)
-                    .help("将当前模型从 GPU 显存中卸载释放")
-                    .disabled(vm.isUnloadingModel)
+                    .disabled(!vm.isConnected || vm.isDownloadingWeights || vm.isLoadingModel || vm.isUnloadingModel)
+
+                    Button {
+                        Task { await vm.loadRemoteModelToVRAM() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if vm.isLoadingModel {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "memorychip")
+                            }
+                            Text(vm.isLoadingModel
+                                 ? L("装载中...", "Loading...")
+                                 : (vm.isSelectedModelLoadedInVRAM ? L("重新装载", "Reload") : L("加载到显存", "Load to VRAM")))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .disabled(!vm.isConnected || vm.isDownloadingWeights || vm.isLoadingModel || vm.isUnloadingModel)
+
+                    if vm.isSelectedModelLoadedInVRAM {
+                        Button {
+                            Task { await vm.unloadRemoteModelFromVRAM(modelId: vm.selectedModelId) }
+                        } label: {
+                            Image(systemName: "eject.fill")
+                        }
+                        .controlSize(.regular)
+                        .help(L("将当前模型从 GPU 显存中卸载释放", "Unload active model from GPU VRAM"))
+                        .disabled(vm.isUnloadingModel)
+                    }
                 }
             }
-        }
         }
     }
 
@@ -4939,37 +5890,43 @@ struct MainStudioView: View {
         case .comfyUI:
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("持久化架构")
+                    Text(L("持久化架构", "Persistence"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(vm.comfyPersistenceLabel)
+                    Text(vm.displayComfyPersistenceLabel)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(vm.comfyDrivePersisted ? Color.green : Color.secondary)
                 }
 
                 HStack {
-                    Text("已存节点 / 权重")
+                    Text(L("已存节点 / 权重", "Saved Nodes / Weights"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(vm.comfyCustomNodesCount) 个节点 · \(vm.comfyModelsCount) 个权重")
+                    Text(L(
+                        "\(vm.comfyCustomNodesCount) 个节点 · \(vm.comfyModelsCount) 个权重",
+                        "\(vm.comfyCustomNodesCount) nodes · \(vm.comfyModelsCount) weights"
+                    ))
                         .font(.caption.weight(.medium))
                         .monospacedDigit()
                 }
 
                 HStack {
-                    Text("画布执行队列")
+                    Text(L("画布执行队列", "Execution Queue"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("运行 \(vm.comfyQueueRunning) · 排队 \(vm.comfyQueuePending)")
+                    Text(L(
+                        "运行 \(vm.comfyQueueRunning) · 排队 \(vm.comfyQueuePending)",
+                        "Running \(vm.comfyQueueRunning) · Pending \(vm.comfyQueuePending)"
+                    ))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(vm.comfyQueueRunning > 0 ? Color.green : .secondary)
                         .monospacedDigit()
                 }
 
-                Toggle("启动前释放其它常驻模型显存", isOn: $vm.comfyUnloadOthersOnStart)
+                Toggle(L("启动前释放其它常驻模型显存", "Unload other VRAM models before starting"), isOn: $vm.comfyUnloadOthersOnStart)
                     .font(.caption)
 
                 HStack(spacing: 6) {
@@ -4982,7 +5939,7 @@ struct MainStudioView: View {
                             } else {
                                 Image(systemName: "arrow.triangle.2.circlepath.icloud")
                             }
-                            Text(vm.comfySyncingDrive ? "同步中..." : "立即同步云盘")
+                            Text(vm.comfySyncingDrive ? L("同步中...", "Syncing...") : L("立即同步云盘", "Sync to Drive"))
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -4994,7 +5951,7 @@ struct MainStudioView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "memorychip")
-                            Text("清缓存显存")
+                            Text(L("清缓存显存", "Free VRAM Cache"))
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -5004,13 +5961,13 @@ struct MainStudioView: View {
             }
 
         case .llmVLM:
-            Toggle("启用深度思考链 (Thinking Mode)", isOn: $vm.enableThinking)
+            Toggle(L("启用深度思考链 (Thinking Mode)", "Enable Thinking Chain (Thinking Mode)"), isOn: $vm.enableThinking)
                 .font(.callout)
 
             if vm.enableThinking {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("思考深度 (Reasoning Effort)")
+                        Text(L("思考深度 (Reasoning Effort)", "Reasoning Effort"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -5020,10 +5977,10 @@ struct MainStudioView: View {
                     }
                     HStack(spacing: 4) {
                         ForEach([
-                            ("low", "精简"),
-                            ("medium", "均衡"),
-                            ("high", "深入"),
-                            ("xhigh", "极深")
+                            ("low", L("精简", "Low")),
+                            ("medium", L("均衡", "Med")),
+                            ("high", L("深入", "High")),
+                            ("xhigh", L("极深", "XHigh"))
                         ], id: \.0) { (key, title) in
                             let active = vm.reasoningEffort == key
                             Button {
@@ -5051,7 +6008,7 @@ struct MainStudioView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 5) {
-                    Text("上下文窗口 (最高 256K)")
+                    Text(L("上下文窗口 (最高 256K)", "Context Window (Up to 256K)"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -5127,7 +6084,10 @@ struct MainStudioView: View {
                     }
                 }
 
-                Text("总容量 \(vm.contextLengthTokens) Tokens" + (vm.loadedContextLengthTokens > 0 ? " · 当前已加载 \(vm.loadedContextLengthTokens / 1024)K" : ""))
+                Text(L(
+                    "总容量 \(vm.contextLengthTokens) Tokens" + (vm.loadedContextLengthTokens > 0 ? " · 当前已加载 \(vm.loadedContextLengthTokens / 1024)K" : ""),
+                    "Capacity \(vm.contextLengthTokens) tokens" + (vm.loadedContextLengthTokens > 0 ? " · Loaded \(vm.loadedContextLengthTokens / 1024)K" : "")
+                ))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -5135,7 +6095,7 @@ struct MainStudioView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("最大输出长度 (含思考链)")
+                    Text(L("最大输出长度 (含思考链)", "Max Output Tokens (incl. Thinking)"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -5154,7 +6114,7 @@ struct MainStudioView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("采样温度 (Temperature)")
+                    Text(L("采样温度 (Temperature)", "Temperature"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -5165,12 +6125,25 @@ struct MainStudioView: View {
                 Slider(value: $vm.temperature, in: 0.1...1.5)
             }
 
+            Button {
+                vm.chatHistory.removeAll()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                    Text(L("清空多轮对话历史", "Clear Chat History"))
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .controlSize(.small)
+            .disabled(vm.chatHistory.isEmpty || vm.isGenerating)
+
         case .image:
             VStack(alignment: .leading, spacing: 4) {
-                Text("输出画幅")
+                Text(L("输出画幅", "Output Aspect & Resolution"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("画幅", selection: $vm.selectedImageResolution) {
+                Picker(L("画幅", "Resolution"), selection: $vm.selectedImageResolution) {
                     ForEach(IMAGE_RESOLUTIONS) { opt in
                         Text(opt.label).tag(opt)
                     }
@@ -5181,11 +6154,11 @@ struct MainStudioView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("采样步数")
+                    Text(L("采样步数", "Sampling Steps"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(Int(vm.inferenceSteps)) 步")
+                    Text(L("\(Int(vm.inferenceSteps)) 步", "\(Int(vm.inferenceSteps)) steps"))
                         .font(.caption.weight(.medium))
                         .monospacedDigit()
                 }
@@ -5201,7 +6174,7 @@ struct MainStudioView: View {
             if vm.selectedModelId == "z_image_turbo" && vm.taskModeId == "i2i_edit" {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
-                        Text("重绘幅度")
+                        Text(L("重绘幅度", "Denoising Strength"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -5213,14 +6186,14 @@ struct MainStudioView: View {
                 }
             }
 
-            seedAndBatchControls(unitLabel: "张")
+            seedAndBatchControls(unitLabelZh: "张")
 
         case .videoAudio, .video:
             VStack(alignment: .leading, spacing: 4) {
-                Text("视频分辨率")
+                Text(L("视频分辨率", "Video Resolution"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("分辨率", selection: $vm.selectedVideoResolution) {
+                Picker(L("分辨率", "Resolution"), selection: $vm.selectedVideoResolution) {
                     ForEach(VIDEO_RESOLUTIONS) { opt in
                         Text(opt.label).tag(opt)
                     }
@@ -5231,11 +6204,14 @@ struct MainStudioView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack {
-                    Text("视频总帧数 (4~15 秒)")
+                    Text(L("视频总帧数 (4~15 秒)", "Total Frames (4–15s)"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(Int(vm.numFrames)) 帧 · 约 \(fmt(vm.numFrames / vm.fps, 1)) 秒")
+                    Text(L(
+                        "\(Int(vm.numFrames)) 帧 · 约 \(fmt(vm.numFrames / vm.fps, 1)) 秒",
+                        "\(Int(vm.numFrames)) frames · ~\(fmt(vm.numFrames / vm.fps, 1))s"
+                    ))
                         .font(.caption.weight(.medium))
                         .monospacedDigit()
                 }
@@ -5273,11 +6249,11 @@ struct MainStudioView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("采样步数")
+                    Text(L("采样步数", "Sampling Steps"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(Int(vm.inferenceSteps)) 步")
+                    Text(L("\(Int(vm.inferenceSteps)) 步", "\(Int(vm.inferenceSteps)) steps"))
                         .font(.caption.weight(.medium))
                         .monospacedDigit()
                 }
@@ -5290,29 +6266,29 @@ struct MainStudioView: View {
                 )
             }
 
-            seedAndBatchControls(unitLabel: "条")
+            seedAndBatchControls(unitLabelZh: "条")
         }
     }
 
     @ViewBuilder
-    private func seedAndBatchControls(unitLabel: String) -> some View {
+    private func seedAndBatchControls(unitLabelZh: String) -> some View {
         HStack {
-            Text("随机种子")
+            Text(L("随机种子", "Seed"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            TextField("种子", value: $vm.seed, format: .number.grouping(.never))
+            TextField(L("种子", "Seed"), value: $vm.seed, format: .number.grouping(.never))
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .frame(width: 96)
                 .disabled(vm.randomizeSeed)
-            Toggle("随机", isOn: $vm.randomizeSeed)
+            Toggle(L("随机", "Random"), isOn: $vm.randomizeSeed)
                 .toggleStyle(.checkbox)
                 .font(.caption)
         }
 
         HStack(spacing: 8) {
-            Text("批量连抽")
+            Text(L("批量连抽", "Batch Size"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
@@ -5324,7 +6300,7 @@ struct MainStudioView: View {
                             vm.batchCount = count
                         }
                     } label: {
-                        Text("\(count) \(unitLabel)")
+                        Text(L("\(count) \(unitLabelZh)", "\(count)×"))
                             .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
                             .foregroundStyle(isSelected ? Color.white : Color.primary)
                             .frame(maxWidth: .infinity)
@@ -5395,29 +6371,35 @@ struct MainStudioView: View {
     @ViewBuilder
     private func comfyUIWorkspaceSection(palette: StudioPalette) -> some View {
         let modelSubfolders = [
-            ("diffusion_models", "diffusion_models (DiT / 视频主干模型)"),
-            ("checkpoints", "checkpoints (完整大模型)"),
-            ("loras", "loras (LoRA 风格/运镜微调)"),
-            ("vae", "vae (3D 视频 / 图像 VAE)"),
-            ("text_encoders", "text_encoders (UMT5 / Qwen / CLIP 编码器)"),
-            ("clip_vision", "clip_vision (首尾帧 / 图生视频视觉编码器)"),
-            ("controlnet", "controlnet (姿态 / 深度 / VACE 控制)"),
-            ("upscale_models", "upscale_models (高清超分放大)"),
-            ("audio_encoders", "audio_encoders (音频驱动 / 配音节点)"),
-            ("gguf", "gguf (量化视频/图像主干)")
+            ("diffusion_models", L("diffusion_models (DiT / 视频主干模型)", "diffusion_models (DiT / Video Backbones)")),
+            ("checkpoints", L("checkpoints (完整大模型)", "checkpoints (Full Checkpoints)")),
+            ("loras", L("loras (LoRA 风格/运镜微调)", "loras (Style & Camera LoRAs)")),
+            ("vae", L("vae (3D 视频 / 图像 VAE)", "vae (3D Video / Image VAE)")),
+            ("text_encoders", L("text_encoders (UMT5 / Qwen / CLIP 编码器)", "text_encoders (UMT5 / Qwen / CLIP)")),
+            ("clip_vision", L("clip_vision (首尾帧 / 图生视频视觉编码器)", "clip_vision (I2V / FLF2V Vision Encoders)")),
+            ("controlnet", L("controlnet (姿态 / 深度 / VACE 控制)", "controlnet (Pose / Depth / VACE)")),
+            ("upscale_models", L("upscale_models (高清超分放大)", "upscale_models (Super-Resolution Upscalers)")),
+            ("audio_encoders", L("audio_encoders (音频驱动 / 配音节点)", "audio_encoders (Audio-Driven / Foley Nodes)")),
+            ("gguf", L("gguf (量化视频/图像主干)", "gguf (Quantized Video / Image Backbones)"))
         ]
 
         // 1. 核心画布拉起与全屏浏览器入口卡片
         WorkspaceCard(
-            title: "云端 ComfyUI 全屏节点画布",
-            subtitle: "预装 ComfyUI + ComfyUI-Manager + VideoHelperSuite，自动复用 EasyColab 的 G4 保活、显存/内存/磁盘折线监控与自动休眠",
+            title: L("云端 ComfyUI 全屏节点画布", "Cloud ComfyUI Fullscreen Node Canvas"),
+            subtitle: L(
+                "预装 ComfyUI + ComfyUI-Manager + VideoHelperSuite，自动复用 EasyColab 的 G4 保活、显存/内存/磁盘折线监控与自动休眠",
+                "Preinstalled with ComfyUI + ComfyUI-Manager + VideoHelperSuite, sharing EasyColab's G4 keep-alive, live VRAM/RAM/Disk telemetry & idle auto-sleep"
+            ),
             icon: "point.3.connected.trianglepath.dotted",
             trailing: AnyView(
                 HStack(spacing: 6) {
                     StatusDot(color: vm.comfyRunning ? .green : (vm.comfyStarting ? .orange : .secondary.opacity(0.45)))
                     Text(vm.comfyRunning
-                         ? (vm.comfyQueueRunning > 0 ? "队列渲染中 (\(vm.comfyQueueRunning) 运行 / \(vm.comfyQueuePending) 排队)" : "画布在线待命")
-                         : (vm.comfyStarting ? "正在部署启动..." : "未启动"))
+                         ? (vm.comfyQueueRunning > 0
+                            ? L("队列渲染中 (\(vm.comfyQueueRunning) 运行 / \(vm.comfyQueuePending) 排队)",
+                                "Rendering (\(vm.comfyQueueRunning) active / \(vm.comfyQueuePending) queued)")
+                            : L("画布在线待命", "Canvas Ready"))
+                         : (vm.comfyStarting ? L("正在部署启动...", "Starting...") : L("未启动", "Stopped")))
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(vm.comfyRunning ? Color.green : (vm.comfyStarting ? Color.orange : .secondary))
                 }
@@ -5434,7 +6416,7 @@ struct MainStudioView: View {
                         } label: {
                             HStack(spacing: 7) {
                                 Image(systemName: "safari.fill")
-                                Text("在浏览器打开全屏节点画布")
+                                Text(L("在浏览器打开全屏节点画布", "Open Fullscreen Canvas in Browser"))
                                     .font(.headline)
                             }
                             .frame(maxWidth: .infinity)
@@ -5444,9 +6426,12 @@ struct MainStudioView: View {
                         .controlSize(.large)
 
                         Button {
-                            copyToPasteboard(vm.comfyPublicURL, tip: "已复制 ComfyUI 公网画布地址到剪贴板")
+                            copyToPasteboard(
+                                vm.comfyPublicURL,
+                                tip: L("已复制 ComfyUI 公网画布地址到剪贴板", "Copied ComfyUI public canvas URL to clipboard")
+                            )
                         } label: {
-                            Label("复制画布链接", systemImage: "doc.on.doc")
+                            Label(L("复制画布链接", "Copy Canvas URL"), systemImage: "doc.on.doc")
                                 .padding(.vertical, 8)
                         }
                         .controlSize(.large)
@@ -5454,12 +6439,15 @@ struct MainStudioView: View {
                         Button {
                             Task { await vm.startRemoteComfyUI(forceRestart: true, autoOpenBrowser: false) }
                         } label: {
-                            Label("重启生效", systemImage: "arrow.clockwise")
+                            Label(L("重启生效", "Restart"), systemImage: "arrow.clockwise")
                                 .padding(.vertical, 8)
                         }
                         .controlSize(.large)
                         .disabled(vm.comfyStarting)
-                        .help("在 Manager 安装新自定义节点后可点击一键重启并自动持久化至云盘")
+                        .help(L(
+                            "在 Manager 安装新自定义节点后可点击一键重启并自动持久化至云盘",
+                            "Restart ComfyUI after installing custom nodes in Manager and auto-sync to Google Drive"
+                        ))
                     } else {
                         Button {
                             Task { await vm.startRemoteComfyUI(forceRestart: false, autoOpenBrowser: true) }
@@ -5471,8 +6459,11 @@ struct MainStudioView: View {
                                     Image(systemName: "bolt.circle.fill")
                                 }
                                 Text(vm.comfyStarting
-                                     ? "正在部署云端 ComfyUI 并恢复 Google Drive 软链与节点..."
-                                     : (vm.isConnected ? "一键拉起云端 ComfyUI 并在浏览器打开全屏画布" : "请先在左侧唤醒或连接 G4 实例"))
+                                     ? L("正在部署云端 ComfyUI 并恢复 Google Drive 软链与节点...",
+                                         "Deploying Cloud ComfyUI & restoring Google Drive symlinks and custom nodes...")
+                                     : (vm.isConnected
+                                        ? L("一键拉起云端 ComfyUI 并在浏览器打开全屏画布", "Deploy & Open Fullscreen Cloud ComfyUI Canvas")
+                                        : L("请先在左侧唤醒或连接 G4 实例", "Wake or connect a G4 instance on the left first")))
                                     .font(.headline)
                             }
                             .frame(maxWidth: .infinity)
@@ -5492,7 +6483,7 @@ struct MainStudioView: View {
                     Image(systemName: vm.comfyRunning ? "checkmark.shield.fill" : "info.circle")
                         .font(.system(size: 12))
                         .foregroundStyle(vm.comfyRunning ? Color.green : Color.accentColor)
-                    Text(vm.comfyStatusMessage)
+                    Text(vm.displayComfyStatusMessage)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -5512,11 +6503,20 @@ struct MainStudioView: View {
 
         // 2. 新手零门槛预置图生视频 / 首尾帧运镜工作流包卡片
         WorkspaceCard(
-            title: "预置图生视频 / 首尾帧运镜工作流包（一键配齐模型与中文画布）",
-            subtitle: "专为零基础设计：一键 8 线程下齐配套权重、自动生成全中文三步注释工作流并将 ComfyUI 设为简体中文，零红框报错直接出片",
+            title: L(
+                "预置图生视频 / 首尾帧运镜工作流包（一键配齐模型与中文画布）",
+                "Preset Image-to-Video & First/Last Frame Workflow Packs (1-Click Setup)"
+            ),
+            subtitle: L(
+                "专为零基础设计：一键 8 线程下齐配套权重、自动生成全中文三步注释工作流并将 ComfyUI 设为简体中文，零红框报错直接出片",
+                "Turnkey setup: 8-thread download of all required weights plus annotated 3-step workflow templates — zero missing-node errors"
+            ),
             icon: "wand.and.stars",
             trailing: AnyView(
-                Text("已就绪 \(vm.comfyPresetPacks.filter(\.ready).count) / \(vm.comfyPresetPacks.count) 套")
+                Text(L(
+                    "已就绪 \(vm.comfyPresetPacks.filter(\.ready).count) / \(vm.comfyPresetPacks.count) 套",
+                    "Ready \(vm.comfyPresetPacks.filter(\.ready).count) / \(vm.comfyPresetPacks.count)"
+                ))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(vm.comfyPresetPacks.contains(where: \.ready) ? Color.green : .secondary)
                     .padding(.horizontal, 9)
@@ -5527,15 +6527,30 @@ struct MainStudioView: View {
             VStack(alignment: .leading, spacing: 12) {
                 // 三步傻瓜引导条
                 HStack(spacing: 8) {
-                    comfyStepChip(num: "1", title: "点击下方「一键配齐模型与工作流」", icon: "arrow.down.circle.fill", palette: palette)
+                    comfyStepChip(
+                        num: "1",
+                        title: L("点击下方「一键配齐模型与工作流」", "Click '1-Click Install Pack' below"),
+                        icon: "arrow.down.circle.fill",
+                        palette: palette
+                    )
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.secondary.opacity(0.6))
-                    comfyStepChip(num: "2", title: "在画布最左侧点「工作流」选中文模板", icon: "sidebar.left", palette: palette)
+                    comfyStepChip(
+                        num: "2",
+                        title: L("在画布最左侧点「工作流」选中文模板", "Open 'Workflows' sidebar & pick template"),
+                        icon: "sidebar.left",
+                        palette: palette
+                    )
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.secondary.opacity(0.6))
-                    comfyStepChip(num: "3", title: "上传 1~2 张图片点右上角「运行」出片", icon: "play.circle.fill", palette: palette)
+                    comfyStepChip(
+                        num: "3",
+                        title: L("上传 1~2 张图片点右上角「运行」出片", "Upload 1–2 images & click 'Run'"),
+                        icon: "play.circle.fill",
+                        palette: palette
+                    )
                 }
 
                 VStack(spacing: 10) {
@@ -5548,8 +6563,11 @@ struct MainStudioView: View {
 
         // 3. Google Drive 自动软链持久化矩阵卡片
         WorkspaceCard(
-            title: "Google Drive 自动软链与跨实例持久化",
-            subtitle: "新开 G4 实例自动挂载恢复自定义节点（含自动补齐 Python requirements.txt 依赖）、模型权重与工作流，免重复安装",
+            title: L("Google Drive 自动软链与跨实例持久化", "Google Drive Auto-Symlink Persistence Across Instances"),
+            subtitle: L(
+                "新开 G4 实例自动挂载恢复自定义节点（含自动补齐 Python requirements.txt 依赖）、模型权重与工作流，免重复安装",
+                "Fresh G4 runtimes automatically restore custom nodes (including Python requirements.txt), model weights, and saved workflows"
+            ),
             icon: "externaldrive.badge.icloud",
             trailing: AnyView(
                 Button {
@@ -5561,7 +6579,7 @@ struct MainStudioView: View {
                         } else {
                             Image(systemName: "arrow.triangle.2.circlepath")
                         }
-                        Text(vm.comfySyncingDrive ? "正在同步..." : "立即同步至云盘")
+                        Text(vm.comfySyncingDrive ? L("正在同步...", "Syncing...") : L("立即同步至云盘", "Sync to Drive Now"))
                     }
                 }
                 .controlSize(.small)
@@ -5571,30 +6589,30 @@ struct MainStudioView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     comfyPersistMetricTile(
-                        title: "models/* 模型权重库",
-                        value: "\(vm.comfyModelsCount) 个权重文件",
-                        detail: "各子目录自动软链至云盘，新节点自建目录自动接管",
+                        title: L("models/* 模型权重库", "models/* Weight Library"),
+                        value: L("\(vm.comfyModelsCount) 个权重文件", "\(vm.comfyModelsCount) weight files"),
+                        detail: L("各子目录自动软链至云盘，新节点自建目录自动接管", "Subfolders symlinked to Drive; new node folders auto-adopted"),
                         icon: "cube.box.fill",
                         palette: palette
                     )
                     comfyPersistMetricTile(
-                        title: "custom_nodes 自定义节点",
-                        value: "\(vm.comfyCustomNodesCount) 个节点插件",
-                        detail: "NVMe 高速运行 + 云盘双向镜像 + 自动重装依赖",
+                        title: L("custom_nodes 自定义节点", "custom_nodes Extensions"),
+                        value: L("\(vm.comfyCustomNodesCount) 个节点插件", "\(vm.comfyCustomNodesCount) custom nodes"),
+                        detail: L("NVMe 高速运行 + 云盘双向镜像 + 自动重装依赖", "Local NVMe speed + two-way Drive mirror + auto pip deps"),
                         icon: "puzzlepiece.extension.fill",
                         palette: palette
                     )
                     comfyPersistMetricTile(
-                        title: "workflows 工作流存档",
-                        value: "\(vm.comfyWorkflowsCount) 份工作流",
-                        detail: "画布 Ctrl+S 保存即自动持久化至 Google Drive",
+                        title: L("workflows 工作流存档", "workflows Saved Graphs"),
+                        value: L("\(vm.comfyWorkflowsCount) 份工作流", "\(vm.comfyWorkflowsCount) workflows"),
+                        detail: L("画布 Ctrl+S 保存即自动持久化至 Google Drive", "Saving with Ctrl+S in canvas persists directly to Google Drive"),
                         icon: "flowchart.fill",
                         palette: palette
                     )
                 }
 
                 HStack(spacing: 6) {
-                    Text("云端持久化根路径:")
+                    Text(L("云端持久化根路径:", "Drive Persistence Root:"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(vm.comfyPersistRoot)
@@ -5602,26 +6620,29 @@ struct MainStudioView: View {
                         .foregroundStyle(.primary)
                         .textSelection(.enabled)
                     Spacer()
-                    Text(vm.comfyPersistenceLabel)
+                    Text(vm.displayComfyPersistenceLabel)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(vm.comfyDrivePersisted ? Color.green : .secondary)
                 }
             }
         }
 
-        // 3. 8 线程极速下载权重直达 ComfyUI 云盘目录
+        // 4. 8 线程极速下载权重直达 ComfyUI 云盘目录
         WorkspaceCard(
-            title: "8 线程极速下载权重至 ComfyUI 云盘目录",
-            subtitle: "比浏览器单线程快 5~10 倍，下载完成后自动软链落盘至 Google Drive；在 ComfyUI 画布按 R 键即可刷新选用",
+            title: L("8 线程极速下载权重至 ComfyUI 云盘目录", "8-Thread High-Speed Weight Downloader to ComfyUI Drive"),
+            subtitle: L(
+                "比浏览器单线程快 5~10 倍，下载完成后自动软链落盘至 Google Drive；在 ComfyUI 画布按 R 键即可刷新选用",
+                "5–10× faster than single-thread browser downloads, persisted to Google Drive via symlinks; press R in ComfyUI to refresh node dropdowns"
+            ),
             icon: "arrow.down.circle.dotted"
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("目标模型目录 (ComfyUI/models/...)")
+                        Text(L("目标模型目录 (ComfyUI/models/...)", "Target Subfolder (ComfyUI/models/...)"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Picker("目标目录", selection: $vm.comfyWeightSubfolder) {
+                        Picker(L("目标目录", "Target Folder"), selection: $vm.comfyWeightSubfolder) {
                             ForEach(modelSubfolders, id: \.0) { item in
                                 Text(item.1).tag(item.0)
                             }
@@ -5631,13 +6652,16 @@ struct MainStudioView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("HuggingFace 直链 / 下载 URL / 仓库 ID")
+                        Text(L("HuggingFace 直链 / 下载 URL / 仓库 ID", "HuggingFace Direct URL / Download Link / Repo ID"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         TextField(
-                            "URL 或 org/repo",
+                            L("URL 或 org/repo", "URL or org/repo"),
                             text: $vm.comfyWeightSourceInput,
-                            prompt: Text("如 https://huggingface.co/.../resolve/main/xxx.safetensors")
+                            prompt: Text(L(
+                                "如 https://huggingface.co/.../resolve/main/xxx.safetensors",
+                                "e.g. https://huggingface.co/.../resolve/main/xxx.safetensors"
+                            ))
                         )
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 12, design: .monospaced))
@@ -5646,9 +6670,12 @@ struct MainStudioView: View {
 
                 HStack(spacing: 10) {
                     TextField(
-                        "可选文件名或仓库内子路径",
+                        L("可选文件名或仓库内子路径", "Optional filename or repo subpath"),
                         text: $vm.comfyWeightFilenameInput,
-                        prompt: Text("直链可留空；填仓库 ID 时填仓库内文件路径（如 split_files/vae/xxx.safetensors）")
+                        prompt: Text(L(
+                            "直链可留空；填仓库 ID 时填仓库内文件路径（如 split_files/vae/xxx.safetensors）",
+                            "Leave blank for direct URLs; when entering a Repo ID, specify subpath (e.g. split_files/vae/xxx.safetensors)"
+                        ))
                     )
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12, design: .monospaced))
@@ -5662,7 +6689,9 @@ struct MainStudioView: View {
                             } else {
                                 Image(systemName: "bolt.horizontal.fill")
                             }
-                            Text(vm.comfyDownloadingWeight ? "极速下载中..." : "8 线程下载至云盘")
+                            Text(vm.comfyDownloadingWeight
+                                 ? L("极速下载中...", "Downloading...")
+                                 : L("8 线程下载至云盘", "8-Thread Download to Drive"))
                                 .fontWeight(.semibold)
                         }
                         .padding(.horizontal, 10)
@@ -5673,13 +6702,13 @@ struct MainStudioView: View {
             }
         }
 
-        // 4. ComfyUI 云端输出成片库 + 本地预览联动
+        // 5. ComfyUI 云端输出成片库 + 本地预览联动
         HStack(alignment: .top, spacing: 14) {
             mediaPreviewCard
 
             WorkspaceCard(
-                title: "ComfyUI 输出成片",
-                subtitle: "点击一键拉取至 Mac 本地",
+                title: L("ComfyUI 输出成片", "ComfyUI Cloud Outputs"),
+                subtitle: L("点击一键拉取至 Mac 本地", "Click to pull renders to local Mac"),
                 icon: "film.stack"
             ) {
                 if vm.comfyRecentOutputs.isEmpty {
@@ -5687,7 +6716,10 @@ struct MainStudioView: View {
                         Image(systemName: "video.badge.plus")
                             .font(.system(size: 22))
                             .foregroundStyle(.secondary.opacity(0.6))
-                        Text("在 ComfyUI 画布渲染生成的视频与图片会自动显示在此处，并同步保存至 Google Drive")
+                        Text(L(
+                            "在 ComfyUI 画布渲染生成的视频与图片会自动显示在此处，并同步保存至 Google Drive",
+                            "Videos and images rendered in the ComfyUI canvas appear here automatically and sync to Google Drive"
+                        ))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -5708,7 +6740,7 @@ struct MainStudioView: View {
                                             .font(.system(size: 11.5, weight: .medium))
                                             .lineLimit(1)
                                             .truncationMode(.middle)
-                                        Text("\(fmt(item.size_mb ?? 0, 1)) MB · \(item.media_type == "video" ? "视频" : "图像")")
+                                        Text("\(fmt(item.size_mb ?? 0, 1)) MB · \(item.media_type == "video" ? L("视频", "Video") : L("图像", "Image"))")
                                             .font(.system(size: 10))
                                             .foregroundStyle(.secondary)
                                     }
@@ -5726,7 +6758,7 @@ struct MainStudioView: View {
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
                                     .disabled(vm.comfyPullingOutputRelPath != nil)
-                                    .help("拉取到 Mac 本地目录并在左侧播放器预览")
+                                    .help(L("拉取到 Mac 本地目录并在左侧播放器预览", "Pull to local Mac folder & preview in player"))
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 6)
@@ -5817,11 +6849,11 @@ struct MainStudioView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 7) {
-                        Text(pack.title)
+                        Text(pack.localizedTitle)
                             .font(.system(size: 13.5, weight: .bold))
                             .foregroundStyle(.primary)
 
-                        Text(pack.badge)
+                        Text(pack.localizedBadge)
                             .font(.system(size: 10.5, weight: .semibold))
                             .foregroundStyle(isPrimaryRecommended ? Color.white : Color.accentColor)
                             .padding(.horizontal, 7)
@@ -5831,7 +6863,7 @@ struct MainStudioView: View {
                             )
 
                         if pack.ready {
-                            Text("已配齐就绪")
+                            Text(L("已配齐就绪", "Ready"))
                                 .font(.system(size: 10.5, weight: .semibold))
                                 .foregroundStyle(Color.green)
                                 .padding(.horizontal, 7)
@@ -5840,13 +6872,17 @@ struct MainStudioView: View {
                         }
                     }
 
-                    Text(pack.scenario)
+                    Text(pack.localizedScenario)
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 6) {
-                        Label("权重 \(pack.installed_models)/\(pack.total_models) · 约 \(fmt(pack.approx_size_gb, 1)) GB", systemImage: "internaldrive")
+                        Label(
+                            L("权重 \(pack.installed_models)/\(pack.total_models) · 约 \(fmt(pack.approx_size_gb, 1)) GB",
+                              "Weights \(pack.installed_models)/\(pack.total_models) · ~\(fmt(pack.approx_size_gb, 1)) GB"),
+                            systemImage: "internaldrive"
+                        )
                             .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                             .foregroundStyle(.secondary)
 
@@ -5854,7 +6890,7 @@ struct MainStudioView: View {
                             .foregroundStyle(.secondary)
 
                         ForEach(pack.workflows, id: \.self) { wfName in
-                            Text(wfName.replacingOccurrences(of: ".json", with: ""))
+                            Text(ComfyPresetPackItem.localizedWorkflowLabel(wfName))
                                 .font(.system(size: 10.5, weight: .medium))
                                 .foregroundStyle(.primary.opacity(0.85))
                                 .padding(.horizontal, 6)
@@ -5874,12 +6910,15 @@ struct MainStudioView: View {
                             Button {
                                 Task { await vm.installComfyPresetPack(pack, openWhenReady: false) }
                             } label: {
-                                Text("重写中文模板")
+                                Text(L("重写中文模板", "Rebuild Templates"))
                                     .font(.system(size: 11.5))
                             }
                             .controlSize(.small)
                             .disabled(!vm.isConnected || isAnyBusy)
-                            .help("重新生成该工作流包的标准中文傻瓜注释画布文件")
+                            .help(L(
+                                "重新生成该工作流包的标准中文傻瓜注释画布文件",
+                                "Regenerate annotated workflow JSON templates for this pack"
+                            ))
 
                             Button {
                                 if vm.comfyRunning && !vm.comfyPublicURL.isEmpty {
@@ -5890,7 +6929,7 @@ struct MainStudioView: View {
                             } label: {
                                 HStack(spacing: 5) {
                                     Image(systemName: "safari.fill")
-                                    Text("打开画布直接使用")
+                                    Text(L("打开画布直接使用", "Open in Canvas"))
                                         .fontWeight(.semibold)
                                 }
                                 .padding(.horizontal, 8)
@@ -5910,7 +6949,10 @@ struct MainStudioView: View {
                                 } else {
                                     Image(systemName: "bolt.badge.checkmark.fill")
                                 }
-                                Text(isInstallingThis ? "正在极速配齐 (\(Int((vm.comfyProgress * 100).rounded()))%)..." : "一键配齐模型与工作流")
+                                Text(isInstallingThis
+                                     ? L("正在极速配齐 (\(Int((vm.comfyProgress * 100).rounded()))%)...",
+                                         "Installing (\(Int((vm.comfyProgress * 100).rounded()))%)...")
+                                     : L("一键配齐模型与工作流", "1-Click Install Pack"))
                                     .fontWeight(.semibold)
                             }
                             .padding(.horizontal, 10)
@@ -5925,7 +6967,7 @@ struct MainStudioView: View {
             if isInstallingThis {
                 VStack(alignment: .leading, spacing: 4) {
                     ProgressView(value: vm.comfyProgress, total: 1.0)
-                    Text(vm.comfyStatusMessage)
+                    Text(vm.displayComfyStatusMessage)
                         .font(.system(size: 11))
                         .foregroundStyle(Color.accentColor)
                         .lineLimit(1)
@@ -5971,6 +7013,10 @@ struct MainStudioView: View {
         }()
         let activeLLMDisplayName = activeLLMRepo.contains("GGUF") ? "Qwen3.8-27B-GGUF" : "Qwen3.8-27B"
 
+        let samplePrompt1 = L("用三句话解释量子纠缠，并展示思考过程", "Explain quantum entanglement in 3 sentences with reasoning")
+        let samplePrompt2 = L("帮我设计一个高并发网关架构", "Design a high-concurrency API gateway architecture")
+        let samplePrompt3 = L("分析 Rust 所有权机制的核心优势", "Analyze the core advantages of Rust's ownership model")
+
         let openaiCurl = """
         curl \(openaiBase)/chat/completions \\
           -H "Content-Type: application/json" \\
@@ -5978,7 +7024,7 @@ struct MainStudioView: View {
           -d '{
             "model": "\(activeLLMRepo)",
             "stream": true,
-            "messages": [{"role": "user", "content": "用三句话解释量子纠缠，并展示思考过程"}]
+            "messages": [{"role": "user", "content": "\(samplePrompt1)"}]
           }'
         """
 
@@ -5988,7 +7034,7 @@ struct MainStudioView: View {
         client = OpenAI(base_url="\(openaiBase)", api_key="\(displayKey)")
         stream = client.chat.completions.create(
             model="\(activeLLMRepo)",
-            messages=[{"role": "user", "content": "帮我设计一个高并发网关架构"}],
+            messages=[{"role": "user", "content": "\(samplePrompt2)"}],
             stream=True,
         )
         for chunk in stream:
@@ -5997,6 +7043,13 @@ struct MainStudioView: View {
                 print(delta.reasoning_content, end="", flush=True)
             if delta.content:
                 print(delta.content, end="", flush=True)
+        """
+
+        let cursorConfig = """
+        # \(L("Cursor -> Settings -> Models -> OpenAI API Key 配置", "Cursor -> Settings -> Models -> OpenAI API Key"))
+        Override OpenAI Base URL: \(openaiBase)
+        OpenAI API Key:           \(displayKey)
+        Custom Model Name:        \(activeLLMRepo)
         """
 
         let anthropicCurl = """
@@ -6008,7 +7061,7 @@ struct MainStudioView: View {
             "model": "\(activeLLMRepo)",
             "max_tokens": 2048,
             "stream": true,
-            "messages": [{"role": "user", "content": "分析 Rust 所有权机制的核心优势"}]
+            "messages": [{"role": "user", "content": "\(samplePrompt3)"}]
           }'
         """
 
@@ -6020,28 +7073,41 @@ struct MainStudioView: View {
 
         return VStack(alignment: .leading, spacing: 16) {
             WorkspaceCard(
-                title: "网关安全鉴权与运行状态",
-                subtitle: "公网隧道开启期间，建议保持密钥鉴权开启以保护你的 Colab 算力单元 (CU)",
+                title: L("网关安全鉴权与运行状态", "Gateway Authentication & Status"),
+                subtitle: L(
+                    "公网隧道开启期间，建议保持密钥鉴权开启以保护你的 Colab 算力单元 (CU)",
+                    "Keep API Key authentication enabled while the public tunnel is live to protect your Colab Compute Units (CU)"
+                ),
                 icon: "lock.shield",
                 trailing: AnyView(
-                    Text("累计 API 请求: \(vm.apiRequestCount) 次")
+                    Text(L("累计 API 请求: \(vm.apiRequestCount) 次", "Total API Requests: \(vm.apiRequestCount)"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 )
             ) {
                 HStack(spacing: 12) {
-                    Toggle("启用 API Key 鉴权（同时校验 Bearer 与 x-api-key）", isOn: $vm.apiKeyEnabled)
+                    Toggle(
+                        L("启用 API Key 鉴权（同时校验 Bearer 与 x-api-key）",
+                          "Require API Key Auth (validates both Bearer & x-api-key)"),
+                        isOn: $vm.apiKeyEnabled
+                    )
                         .font(.callout.weight(.medium))
 
                     Spacer()
 
                     if !vm.isQwenLoadedInVRAM {
-                        Text("提示：请先在左侧点击「加载到显存」装载 \(activeLLMDisplayName)（可与其他模型同时共驻显存）")
+                        Text(L(
+                            "提示：请先在左侧点击「加载到显存」装载 \(activeLLMDisplayName)（可与其他模型同时共驻显存）",
+                            "Tip: Click 'Load to VRAM' on the left to load \(activeLLMDisplayName) first (co-resides with other models)"
+                        ))
                             .font(.caption)
                             .foregroundStyle(.orange)
                     } else if vm.loadedModelIds.count > 1 {
-                        Text("多模型共驻已激活：外部 API 可随时调用 \(activeLLMDisplayName)，与视频/生图模型零切换共存")
+                        Text(L(
+                            "多模型共驻已激活：外部 API 可随时调用 \(activeLLMDisplayName)，与视频/生图模型零切换共存",
+                            "Multi-model VRAM active: external clients can call \(activeLLMDisplayName) alongside video/image models with zero reload"
+                        ))
                             .font(.caption)
                             .foregroundStyle(.green)
                     }
@@ -6049,7 +7115,7 @@ struct MainStudioView: View {
 
                 if vm.apiKeyEnabled {
                     HStack(spacing: 8) {
-                        Text("访问密钥")
+                        Text(L("访问密钥", "API Key"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         TextField("API Key", text: $vm.apiAccessKey)
@@ -6058,23 +7124,23 @@ struct MainStudioView: View {
                             .onSubmit {
                                 Task { await vm.syncApiKeyToColab() }
                             }
-                        Button("同步到云端") {
+                        Button(L("同步到云端", "Sync to Cloud")) {
                             Task {
                                 await vm.syncApiKeyToColab()
-                                vm.statusMessage = "API 密钥已同步更新至 Colab 云端网关。"
+                                vm.statusMessage = L("API 密钥已同步更新至 Colab 云端网关。", "API Key synced to Colab cloud gateway.")
                             }
                         }
                         .controlSize(.small)
                         .disabled(!vm.isConnected)
 
-                        Button("重新生成") {
+                        Button(L("重新生成", "Regenerate")) {
                             vm.regenerateApiKey()
-                            vm.statusMessage = "已生成新的随机 API Key。"
+                            vm.statusMessage = L("已生成新的随机 API Key。", "Generated a new random API Key.")
                         }
                         .controlSize(.small)
 
-                        Button("复制密钥") {
-                            copyToPasteboard(vm.apiAccessKey, tip: "已复制 API Key 到剪贴板。")
+                        Button(L("复制密钥", "Copy Key")) {
+                            copyToPasteboard(vm.apiAccessKey, tip: L("已复制 API Key 到剪贴板。", "Copied API Key to clipboard."))
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
@@ -6085,28 +7151,54 @@ struct MainStudioView: View {
             HStack(alignment: .top, spacing: 16) {
                 // OpenAI 协议卡片
                 WorkspaceCard(
-                    title: "OpenAI 兼容协议",
-                    subtitle: "兼容 OpenAI SDK、Cursor、Cherry Studio、Chatbox 等客户端",
+                    title: L("OpenAI 兼容协议", "OpenAI-Compatible Protocol (`/v1`)"),
+                    subtitle: L(
+                        "兼容 OpenAI SDK、Cursor、Cherry Studio、Chatbox 等客户端",
+                        "Compatible with OpenAI SDK, Cursor, Cherry Studio, Chatbox & more"
+                    ),
                     icon: "bolt.horizontal.circle"
                 ) {
-                    endpointRow(label: "Base URL", value: openaiBase, tip: "已复制 OpenAI Base URL")
-                    endpointRow(label: "Chat 接口", value: "\(openaiBase)/chat/completions", tip: "已复制 Chat Completions 地址")
-                    endpointRow(label: "模型名称", value: activeLLMRepo, tip: "已复制模型名称")
+                    endpointRow(label: "Base URL", value: openaiBase, tip: L("已复制 OpenAI Base URL", "Copied OpenAI Base URL"))
+                    endpointRow(label: L("Chat 接口", "Chat URL"), value: "\(openaiBase)/chat/completions", tip: L("已复制 Chat Completions 地址", "Copied Chat Completions URL"))
+                    endpointRow(label: L("模型名称", "Model ID"), value: activeLLMRepo, tip: L("已复制模型名称", "Copied Model ID"))
 
-                    Text("支持 stream 流式输出、reasoning_content 深度思考链、image_url 视觉输入与 Function Calling 工具调用；加载图像模型时亦支持 /v1/images/generations。")
+                    Text(L(
+                        "支持 stream 流式输出、reasoning_content 深度思考链、image_url 视觉输入与 Function Calling 工具调用；加载图像模型时亦支持 /v1/images/generations。",
+                        "Supports SSE streaming, `reasoning_content` thinking chains, `image_url` vision inputs, and Function Calling; also serves `/v1/images/generations` when an image model is loaded."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    codeSnippetBlock(title: "Python OpenAI SDK 流式示例", code: openaiPython, palette: palette)
+                    Picker("", selection: $openaiSnippetTab) {
+                        Text(L("Python 示例", "Python SDK")).tag(0)
+                        Text("Cursor").tag(1)
+                        Text("curl").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+
+                    codeSnippetBlock(
+                        title: openaiSnippetTab == 0
+                            ? L("Python OpenAI SDK 流式示例", "Python OpenAI SDK Streaming Example")
+                            : (openaiSnippetTab == 1 ? L("Cursor 编辑器接入配置", "Cursor IDE Custom Model Setup") : "OpenAI Chat Completions curl"),
+                        code: openaiSnippetTab == 0 ? openaiPython : (openaiSnippetTab == 1 ? cursorConfig : openaiCurl),
+                        palette: palette
+                    )
 
                     HStack(spacing: 8) {
-                        Button("复制 Python 代码") {
-                            copyToPasteboard(openaiPython, tip: "已复制 OpenAI Python 调用代码。")
+                        Button(L("复制 Python 代码", "Copy Python")) {
+                            copyToPasteboard(openaiPython, tip: L("已复制 OpenAI Python 调用代码。", "Copied OpenAI Python snippet."))
                         }
                         .controlSize(.small)
 
-                        Button("复制 curl 命令") {
-                            copyToPasteboard(openaiCurl, tip: "已复制 OpenAI curl 测试命令。")
+                        Button(L("复制 Cursor 配置", "Copy Cursor")) {
+                            copyToPasteboard(cursorConfig, tip: L("已复制 Cursor 接入配置。", "Copied Cursor configuration."))
+                        }
+                        .controlSize(.small)
+
+                        Button(L("复制 curl 命令", "Copy curl")) {
+                            copyToPasteboard(openaiCurl, tip: L("已复制 OpenAI curl 测试命令。", "Copied OpenAI curl command."))
                         }
                         .controlSize(.small)
                     }
@@ -6114,28 +7206,48 @@ struct MainStudioView: View {
 
                 // Anthropic 协议卡片
                 WorkspaceCard(
-                    title: "Anthropic Messages 协议",
-                    subtitle: "原生实现 /v1/messages，兼容 Anthropic SDK 与 Claude Code",
+                    title: L("Anthropic Messages 协议", "Anthropic Messages Protocol (`/v1/messages`)"),
+                    subtitle: L(
+                        "原生实现 /v1/messages，兼容 Anthropic SDK 与 Claude Code",
+                        "Native `/v1/messages` endpoint for Anthropic SDK & Claude Code"
+                    ),
                     icon: "chevron.left.forwardslash.chevron.right"
                 ) {
-                    endpointRow(label: "Base URL", value: anthropicBase, tip: "已复制 Anthropic Base URL")
-                    endpointRow(label: "Messages", value: "\(anthropicBase)/v1/messages", tip: "已复制 Anthropic Messages 地址")
-                    endpointRow(label: "鉴权请求头", value: "x-api-key 或 Authorization: Bearer", tip: "已复制请求头说明")
+                    endpointRow(label: "Base URL", value: anthropicBase, tip: L("已复制 Anthropic Base URL", "Copied Anthropic Base URL"))
+                    endpointRow(label: "Messages", value: "\(anthropicBase)/v1/messages", tip: L("已复制 Anthropic Messages 地址", "Copied Anthropic Messages URL"))
+                    endpointRow(label: L("鉴权请求头", "Auth Header"), value: L("x-api-key 或 Authorization: Bearer", "x-api-key or Authorization: Bearer"), tip: L("已复制请求头说明", "Copied auth header format"))
 
-                    Text("完整支持 Anthropic SSE 事件流（thinking_delta 思考块、text_delta 文本块、tool_use 工具块）及 /v1/messages/count_tokens 接口，任意模型名均可自动路由至 \(activeLLMDisplayName)。")
+                    Text(L(
+                        "完整支持 Anthropic SSE 事件流（thinking_delta 思考块、text_delta 文本块、tool_use 工具块）及 /v1/messages/count_tokens 接口，任意模型名均可自动路由至 \(activeLLMDisplayName)。",
+                        "Full Anthropic SSE streaming (`thinking_delta`, `text_delta`, `tool_use`) plus `/v1/messages/count_tokens`; any model alias routes automatically to \(activeLLMDisplayName)."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    codeSnippetBlock(title: "Claude Code / 终端环境变量接入", code: claudeCodeEnv, palette: palette)
+                    Picker("", selection: $anthropicSnippetTab) {
+                        Text("Claude Code").tag(0)
+                        Text("curl").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+
+                    codeSnippetBlock(
+                        title: anthropicSnippetTab == 0
+                            ? L("Claude Code / 终端环境变量接入", "Claude Code / Shell Environment Variables")
+                            : "Anthropic /v1/messages curl",
+                        code: anthropicSnippetTab == 0 ? claudeCodeEnv : anthropicCurl,
+                        palette: palette
+                    )
 
                     HStack(spacing: 8) {
-                        Button("复制环境变量配置") {
-                            copyToPasteboard(claudeCodeEnv, tip: "已复制 ANTHROPIC_BASE_URL 环境变量配置。")
+                        Button(L("复制环境变量配置", "Copy Claude Code Env")) {
+                            copyToPasteboard(claudeCodeEnv, tip: L("已复制 ANTHROPIC_BASE_URL 环境变量配置。", "Copied ANTHROPIC_BASE_URL environment variables."))
                         }
                         .controlSize(.small)
 
-                        Button("复制 Anthropic curl") {
-                            copyToPasteboard(anthropicCurl, tip: "已复制 Anthropic /v1/messages curl 命令。")
+                        Button(L("复制 Anthropic curl", "Copy Anthropic curl")) {
+                            copyToPasteboard(anthropicCurl, tip: L("已复制 Anthropic /v1/messages curl 命令。", "Copied Anthropic /v1/messages curl command."))
                         }
                         .controlSize(.small)
                     }
@@ -6149,14 +7261,14 @@ struct MainStudioView: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 64, alignment: .leading)
+                .frame(width: 72, alignment: .leading)
             Text(value)
                 .font(.system(size: 11.5, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button("复制") {
+            Button(L("复制", "Copy")) {
                 copyToPasteboard(value, tip: tip)
             }
             .controlSize(.mini)
@@ -6218,7 +7330,7 @@ struct MainStudioView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "square.stack.3d.up.fill")
                                 .font(.system(size: 10, weight: .semibold))
-                            Text("\(vm.loadedModelIds.count) 模型显存共驻")
+                            Text(L("\(vm.loadedModelIds.count) 模型显存共驻", "\(vm.loadedModelIds.count) Models in VRAM"))
                                 .font(.caption2.weight(.semibold))
                         }
                         .foregroundStyle(Color.accentColor)
@@ -6229,7 +7341,9 @@ struct MainStudioView: View {
 
                     HStack(spacing: 6) {
                         StatusDot(color: vm.isSelectedModelLoadedInVRAM ? .green : .secondary.opacity(0.5))
-                        Text(vm.isSelectedModelLoadedInVRAM ? "显存已就绪" : "待加载至显存")
+                        Text(vm.isSelectedModelLoadedInVRAM
+                             ? L("显存已就绪", "Ready in VRAM")
+                             : L("待加载至显存", "Not Loaded in VRAM"))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(vm.isSelectedModelLoadedInVRAM ? Color.green : Color.secondary)
                     }
@@ -6265,7 +7379,7 @@ struct MainStudioView: View {
                                         .font(.system(size: 14, weight: .bold))
                                         .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                                     if isSelected {
-                                        Text("当前模式")
+                                        Text(L("当前模式", "Active"))
                                             .font(.system(size: 10, weight: .semibold))
                                             .foregroundStyle(Color.accentColor)
                                             .padding(.horizontal, 6)
@@ -6320,34 +7434,81 @@ struct MainStudioView: View {
     private var referenceImageSection: some View {
         switch vm.taskModeId {
         case "fl2va":
-            WorkspaceCard(title: "首尾关键帧参考图", subtitle: "至少拖入首帧或尾帧之一，精准锁定起止画面构图", icon: "photo.on.rectangle.angled") {
+            WorkspaceCard(
+                title: L("首尾关键帧参考图", "Start & End Keyframe Images"),
+                subtitle: L("至少拖入首帧或尾帧之一，精准锁定起止画面构图", "Drop at least a start frame or end frame to anchor camera motion & composition"),
+                icon: "photo.on.rectangle.angled"
+            ) {
                 HStack(spacing: 12) {
-                    FrameDropWell(title: "起始首帧 (Index 0)", subtitle: "拖入图片或点击选择", image: $vm.firstFrameImage)
-                    FrameDropWell(title: "结束尾帧 (可选 · Index -1)", subtitle: "拖入图片或点击选择", image: $vm.lastFrameImage)
+                    FrameDropWell(
+                        title: L("起始首帧 (Index 0)", "Start Frame (Index 0)"),
+                        subtitle: L("拖入图片或点击选择", "Drop an image or click to browse"),
+                        image: $vm.firstFrameImage
+                    )
+                    FrameDropWell(
+                        title: L("结束尾帧 (可选 · Index -1)", "End Frame (Optional · Index -1)"),
+                        subtitle: L("拖入图片或点击选择", "Drop an image or click to browse"),
+                        image: $vm.lastFrameImage
+                    )
                 }
             }
         case "i2v":
-            WorkspaceCard(title: "起始首帧参考图", subtitle: "模型将以该图片作为视频第 1 帧向后延展动态画面", icon: "photo.badge.arrow.down") {
-                FrameDropWell(title: "首帧原图", subtitle: "拖入本地图片或点击浏览", image: $vm.firstFrameImage)
+            WorkspaceCard(
+                title: L("起始首帧参考图", "Start Keyframe Image"),
+                subtitle: L("模型将以该图片作为视频第 1 帧向后延展动态画面", "The model animates forward starting from this image as frame 0"),
+                icon: "photo.badge.arrow.down"
+            ) {
+                FrameDropWell(
+                    title: L("首帧原图", "Start Frame Image"),
+                    subtitle: L("拖入本地图片或点击浏览", "Drop a local image or click to browse"),
+                    image: $vm.firstFrameImage
+                )
             }
         case "i2i_edit":
             WorkspaceCard(
-                title: vm.selectedModelId == "qwen_image_21" ? "指令修图参考原图" : "图生图重绘参考底图",
-                subtitle: vm.selectedModelId == "qwen_image_21" ? "支持上传 1~2 张参考图进行局部编辑、换背景或多主体融合" : "上传参考原图并在左侧调节重绘幅度",
+                title: vm.selectedModelId == "qwen_image_21"
+                    ? L("指令修图参考原图", "Instruction Image-Editing References")
+                    : L("图生图重绘参考底图", "Image-to-Image Reference"),
+                subtitle: vm.selectedModelId == "qwen_image_21"
+                    ? L("支持上传 1~2 张参考图进行局部编辑、换背景或多主体融合", "Upload 1–2 reference images for local edits, background swaps, or multi-subject fusion")
+                    : L("上传参考原图并在左侧调节重绘幅度", "Upload a reference image and tune Denoising Strength in the left sidebar"),
                 icon: "wand.and.rays"
             ) {
                 HStack(spacing: 12) {
-                    FrameDropWell(title: "主参考图 1 (必选)", subtitle: "拖入待编辑原图", image: $vm.firstFrameImage)
+                    FrameDropWell(
+                        title: L("主参考图 1 (必选)", "Primary Reference 1 (Required)"),
+                        subtitle: L("拖入待编辑原图", "Drop source image to edit"),
+                        image: $vm.firstFrameImage
+                    )
                     if vm.selectedModelId == "qwen_image_21" {
-                        FrameDropWell(title: "融合参考图 2 (可选)", subtitle: "用于多图主体融合编辑", image: $vm.lastFrameImage)
+                        FrameDropWell(
+                            title: L("融合参考图 2 (可选)", "Fusion Reference 2 (Optional)"),
+                            subtitle: L("用于多图主体融合编辑", "For multi-image subject fusion"),
+                            image: $vm.lastFrameImage
+                        )
                     }
                 }
             }
         case "vlm":
-            WorkspaceCard(title: "待分析视觉图像", subtitle: "支持拖入 1~2 张截图、摄影或分镜画稿交由 \(vm.activeModelSpec.name) 解析", icon: "eye") {
+            WorkspaceCard(
+                title: L("待分析视觉图像", "Vision Reference Images"),
+                subtitle: L(
+                    "支持拖入 1~2 张截图、摄影或分镜画稿交由 \(vm.activeModelSpec.name) 解析",
+                    "Drop 1–2 screenshots, photos, or storyboard sketches for \(vm.activeModelSpec.name) to analyze"
+                ),
+                icon: "eye"
+            ) {
                 HStack(spacing: 12) {
-                    FrameDropWell(title: "输入图像 1", subtitle: "拖入图片进行解析或反推提示词", image: $vm.firstFrameImage)
-                    FrameDropWell(title: "对比图像 2 (可选)", subtitle: "可同时传入第二张图像对比分析", image: $vm.lastFrameImage)
+                    FrameDropWell(
+                        title: L("输入图像 1", "Input Image 1"),
+                        subtitle: L("拖入图片进行解析或反推提示词", "Drop an image to analyze or reverse-engineer prompts"),
+                        image: $vm.firstFrameImage
+                    )
+                    FrameDropWell(
+                        title: L("对比图像 2 (可选)", "Comparison Image 2 (Optional)"),
+                        subtitle: L("可同时传入第二张图像对比分析", "Optionally attach a second image for side-by-side comparison"),
+                        image: $vm.lastFrameImage
+                    )
                 }
             }
         default:
@@ -6359,15 +7520,38 @@ struct MainStudioView: View {
         let mod = vm.activeModelSpec.modality
         let cardTitle: String = {
             switch mod {
-            case .llmVLM: return "问题与指令输入"
-            case .image: return vm.taskModeId == "i2i_edit" ? "修图指令与画面描述" : "图像画面提示词"
-            case .videoAudio, .video, .comfyUI: return "镜头与多模态提示词"
+            case .llmVLM:
+                return L("问题与指令输入", "Message & Instruction Input")
+            case .image:
+                return vm.taskModeId == "i2i_edit"
+                    ? L("修图指令与画面描述", "Editing Instruction & Scene Prompt")
+                    : L("图像画面提示词", "Image Prompt")
+            case .videoAudio, .video, .comfyUI:
+                return L("镜头与多模态提示词", "Camera & Multimodal Prompts")
+            }
+        }()
+
+        let primaryPlaceholder: String = {
+            switch mod {
+            case .llmVLM:
+                return L("输入你想提问、推理编码或反推提示词的内容...", "Enter a question, coding task, or vision prompt...")
+            case .image:
+                return vm.taskModeId == "i2i_edit"
+                    ? L("描述你想修改的细节（例如：把背景换成夕阳海滩，保留人物光影）...", "Describe your edit (e.g. replace background with a sunset beach while preserving lighting)...")
+                    : L("描述主体、构图、镜头景别、光影色调与文字排版...", "Describe subject, composition, lighting, lens style, and typography...")
+            case .videoAudio, .video, .comfyUI:
+                return L("描述画面主体运动、镜头推拉摇移、光影氛围与电影质感...", "Describe subject motion, camera movement, lighting, and cinematic style...")
             }
         }()
 
         return WorkspaceCard(title: cardTitle, icon: "text.alignleft") {
             promptEditor(
-                title: mod == .llmVLM ? "对话内容 / 视觉提问" : (vm.taskModeId == "i2i_edit" ? "编辑指令或目标画面描述" : "主体、构图、光影与风格描述"),
+                title: mod == .llmVLM
+                    ? L("对话内容 / 视觉提问", "Chat Message / Vision Question")
+                    : (vm.taskModeId == "i2i_edit"
+                       ? L("编辑指令或目标画面描述", "Edit Instruction or Target Scene")
+                       : L("主体、构图、光影与风格描述", "Subject, Composition, Lighting & Style")),
+                placeholder: primaryPlaceholder,
                 text: $vm.visualPrompt,
                 height: mod == .llmVLM ? 84 : 92,
                 palette: palette
@@ -6375,29 +7559,79 @@ struct MainStudioView: View {
 
             if mod == .videoAudio {
                 HStack(alignment: .top, spacing: 12) {
-                    promptEditor(title: "环境音效与台词对白（可选）", text: $vm.soundscapePrompt, height: 58, palette: palette)
-                    promptEditor(title: "背景音乐风格（可选）", text: $vm.musicPrompt, height: 58, palette: palette)
+                    promptEditor(
+                        title: L("环境音效与台词对白（可选）", "Soundscape, Foley & Dialogue (Optional)"),
+                        placeholder: L("如：海浪拍岸声、脚步声、角色轻声说台词...", "e.g. Ocean waves crashing, footsteps on gravel, spoken dialogue..."),
+                        text: $vm.soundscapePrompt,
+                        height: 58,
+                        palette: palette
+                    )
+                    promptEditor(
+                        title: L("背景音乐风格（可选）", "Background Music Style (Optional)"),
+                        placeholder: L("如：温暖大提琴与原声吉他电影配乐...", "e.g. Warm cinematic cello and acoustic guitar score..."),
+                        text: $vm.musicPrompt,
+                        height: 58,
+                        palette: palette
+                    )
                 }
+
+                DisclosureGroup(
+                    L("反向提示词 Negative Prompt（可选，排除低质或多余元素）", "Negative Prompt (Optional — exclude artifacts or unwanted elements)"),
+                    isExpanded: $showNegativePrompt
+                ) {
+                    promptEditor(
+                        title: L("反向排除项", "Negative Terms"),
+                        placeholder: L("如：模糊、畸变、水印、多余肢体、画面闪烁...", "e.g. blurry, distorted, watermark, extra limbs, flickering..."),
+                        text: $vm.negativePrompt,
+                        height: 44,
+                        palette: palette
+                    )
+                    .padding(.top, 4)
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
             } else if mod == .image || mod == .video {
-                promptEditor(title: "反向提示词 Negative Prompt（可选，排除低质或多余元素）", text: $vm.negativePrompt, height: 46, palette: palette)
+                promptEditor(
+                    title: L("反向提示词 Negative Prompt（可选，排除低质或多余元素）", "Negative Prompt (Optional — exclude low quality or unwanted elements)"),
+                    placeholder: L("如：模糊、低分辨率、畸变、水印、杂乱文字...", "e.g. blurry, low resolution, deformed, watermark, garbled text..."),
+                    text: $vm.negativePrompt,
+                    height: 46,
+                    palette: palette
+                )
             }
         }
     }
 
-    private func promptEditor(title: String, text: Binding<String>, height: CGFloat, palette: StudioPalette) -> some View {
+    private func promptEditor(
+        title: String,
+        placeholder: String = "",
+        text: Binding<String>,
+        height: CGFloat,
+        palette: StudioPalette
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-            TextEditor(text: text)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(height: height)
-                .background(RoundedRectangle(cornerRadius: 8).fill(palette.inputFill))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.cardBorder, lineWidth: 0.8))
+            ZStack(alignment: .topLeading) {
+                if text.wrappedValue.isEmpty && !placeholder.isEmpty {
+                    Text(placeholder)
+                        .font(.body)
+                        .foregroundStyle(.secondary.opacity(0.55))
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 10)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: text)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+            }
+            .frame(height: height)
+            .background(RoundedRectangle(cornerRadius: 8).fill(palette.inputFill))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.cardBorder, lineWidth: 0.8))
         }
         .frame(maxWidth: .infinity)
     }
@@ -6405,24 +7639,43 @@ struct MainStudioView: View {
     private var generateButtonTitle: String {
         let mod = vm.activeModelSpec.modality
         if vm.isGenerating {
-            let liveTime = vm.currentJobElapsed > 0.05 ? " · 已耗时 \(formatDuration(vm.currentJobElapsed, compact: true))" : ""
-            if mod == .llmVLM { return "\(vm.activeModelSpec.name) 正在推理输出\(liveTime)..." }
+            let liveTime = vm.currentJobElapsed > 0.05
+                ? L(" · 已耗时 \(formatDuration(vm.currentJobElapsed, compact: true))",
+                    " · \(formatDuration(vm.currentJobElapsed, compact: true))")
+                : ""
+            if mod == .llmVLM {
+                return L(
+                    "\(vm.activeModelSpec.name) 正在推理输出\(liveTime)...",
+                    "\(vm.activeModelSpec.name) generating\(liveTime)..."
+                )
+            }
             return vm.batchCount > 1
-                ? "正在生成（共 \(vm.batchCount) 项\(liveTime)）..."
-                : "正在云端 GPU 生成\(liveTime)..."
+                ? L("正在生成（共 \(vm.batchCount) 项\(liveTime)）...",
+                    "Generating (\(vm.batchCount) items\(liveTime))...")
+                : L("正在云端 GPU 生成\(liveTime)...",
+                    "Generating on Cloud GPU\(liveTime)...")
         }
         if !vm.isSelectedModelLoadedInVRAM {
-            return "开始运行（请先在左侧将 \(vm.activeModelSpec.name) 加载到显存）"
+            return L(
+                "开始运行（请先在左侧将 \(vm.activeModelSpec.name) 加载到显存）",
+                "Run (Load \(vm.activeModelSpec.name) to VRAM on the left first)"
+            )
         }
         switch mod {
         case .llmVLM:
-            return "发送并开始深度推理 (Command + Return)"
+            return L("发送并开始深度推理 (Command + Return)", "Send & Start Reasoning (Command + Return)")
         case .image:
-            return vm.batchCount > 1 ? "生成 \(vm.batchCount) 张高清图像" : "开始生成图像"
+            return vm.batchCount > 1
+                ? L("生成 \(vm.batchCount) 张高清图像", "Generate \(vm.batchCount) HD Images")
+                : L("开始生成图像", "Generate Image")
         case .videoAudio:
-            return vm.batchCount > 1 ? "连续生成 \(vm.batchCount) 条全模态音视频" : "开始生成音视频"
+            return vm.batchCount > 1
+                ? L("连续生成 \(vm.batchCount) 条全模态音视频", "Generate \(vm.batchCount) Videos with Audio")
+                : L("开始生成音视频", "Generate Video + Audio")
         case .video, .comfyUI:
-            return vm.batchCount > 1 ? "连续生成 \(vm.batchCount) 条高清视频" : "开始生成视频"
+            return vm.batchCount > 1
+                ? L("连续生成 \(vm.batchCount) 条高清视频", "Generate \(vm.batchCount) HD Videos")
+                : L("开始生成视频", "Generate Video")
         }
     }
 
@@ -6456,7 +7709,7 @@ struct MainStudioView: View {
                         HStack(spacing: 5) {
                             Image(systemName: "stop.fill")
                                 .font(.caption)
-                            Text("停止推理")
+                            Text(L("停止推理", "Stop"))
                                 .font(.headline)
                         }
                         .padding(.horizontal, 12)
@@ -6464,7 +7717,7 @@ struct MainStudioView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
-                    .help("立即中断当前云端推理任务并解锁操作")
+                    .help(L("立即中断当前云端推理任务并解锁操作", "Abort the running cloud GPU job immediately"))
                 }
             }
 
@@ -6482,7 +7735,7 @@ struct MainStudioView: View {
                 Image(systemName: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(vm.statusMessage)
+                Text(vm.displayStatusMessage)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -6494,8 +7747,14 @@ struct MainStudioView: View {
 
     private func llmConversationCard(palette: StudioPalette) -> some View {
         WorkspaceCard(
-            title: "\(vm.activeModelSpec.name) 深度推理与视觉对话输出",
-            subtitle: "实时流式展示模型内部思考链与最终回答（当前上下文窗口 \(vm.contextLengthK)K），支持一键复制为视频/生图提示词",
+            title: L(
+                "\(vm.activeModelSpec.name) 深度推理与视觉对话输出",
+                "\(vm.activeModelSpec.name) Deep Reasoning & Vision Chat"
+            ),
+            subtitle: L(
+                "实时流式展示模型内部思考链与最终回答（当前上下文窗口 \(vm.contextLengthK)K），支持一键复制为视频/生图提示词",
+                "Streams internal chain-of-thought and final response in real time (\(vm.contextLengthK)K context window)"
+            ),
             icon: "bubble.left.and.text.bubble.right",
             trailing: AnyView(
                 HStack(spacing: 8) {
@@ -6504,11 +7763,11 @@ struct MainStudioView: View {
                             vm.taskModeId = "api"
                         }
                     } label: {
-                        Label("API 接入配置", systemImage: "network")
+                        Label(L("API 接入配置", "API Gateway"), systemImage: "network")
                     }
                     .controlSize(.small)
 
-                    Button("清空对话") {
+                    Button(L("清空对话", "Clear Chat")) {
                         vm.chatHistory.removeAll()
                     }
                     .controlSize(.small)
@@ -6521,7 +7780,10 @@ struct MainStudioView: View {
                     Image(systemName: "brain")
                         .font(.system(size: 30))
                         .foregroundStyle(.secondary.opacity(0.6))
-                    Text("加载 \(vm.activeModelSpec.name) 后，在上方输入问题或拖入图片即可开启流式深度推理")
+                    Text(L(
+                        "加载 \(vm.activeModelSpec.name) 后，在上方输入问题或拖入图片即可开启流式深度推理",
+                        "Load \(vm.activeModelSpec.name), then enter a prompt or drop images above to stream reasoning & answers"
+                    ))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -6534,11 +7796,11 @@ struct MainStudioView: View {
                                 Image(systemName: turn.role == "user" ? "person.fill" : "sparkles")
                                     .font(.caption)
                                     .foregroundStyle(turn.role == "user" ? Color.secondary : Color.accentColor)
-                                Text(turn.role == "user" ? "提问" : vm.activeModelSpec.name)
+                                Text(turn.role == "user" ? L("提问", "You") : vm.activeModelSpec.name)
                                     .font(.caption.weight(.bold))
                                     .foregroundStyle(turn.role == "user" ? Color.secondary : Color.accentColor)
                                 if turn.hasImage {
-                                    Text("附带视觉图像")
+                                    Text(L("附带视觉图像", "Image Attached"))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .padding(.horizontal, 6)
@@ -6547,7 +7809,7 @@ struct MainStudioView: View {
                                 }
                                 Spacer()
                                 if turn.role == "assistant" && !turn.content.isEmpty {
-                                    Button("复制回复") {
+                                    Button(L("复制回复", "Copy Reply")) {
                                         NSPasteboard.general.clearContents()
                                         NSPasteboard.general.setString(turn.content, forType: .string)
                                     }
@@ -6556,7 +7818,10 @@ struct MainStudioView: View {
                             }
 
                             if !turn.thinking.isEmpty {
-                                DisclosureGroup("深度思考过程 (\(turn.thinking.count) 字)") {
+                                DisclosureGroup(L(
+                                    "深度思考过程 (\(turn.thinking.count) 字)",
+                                    "Chain of Thought (\(turn.thinking.count) chars)"
+                                )) {
                                     Text(turn.thinking)
                                         .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
@@ -6577,7 +7842,7 @@ struct MainStudioView: View {
                             } else if turn.role == "assistant" && vm.isGenerating {
                                 HStack(spacing: 6) {
                                     ProgressView().controlSize(.small)
-                                    Text("正在思考并组织回答...")
+                                    Text(L("正在思考并组织回答...", "Thinking and composing response..."))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -6603,13 +7868,13 @@ struct MainStudioView: View {
     private var mediaPreviewCard: some View {
         let curElapsed = vm.elapsedForMedia(vm.currentMediaURL)
         return WorkspaceCard(
-            title: "生成结果预览",
+            title: L("生成结果预览", "Output Preview"),
             icon: "play.rectangle",
             trailing: curElapsed != nil ? AnyView(
                 HStack(spacing: 4) {
                     Image(systemName: "stopwatch.fill")
                         .font(.system(size: 10.5, weight: .semibold))
-                    Text("生成耗时 \(formatDuration(curElapsed!))")
+                    Text(L("生成耗时 \(formatDuration(curElapsed!))", "Elapsed \(formatDuration(curElapsed!))"))
                         .font(.system(size: 11, weight: .semibold))
                         .monospacedDigit()
                 }
@@ -6637,7 +7902,10 @@ struct MainStudioView: View {
                         Image(systemName: vm.activeModelSpec.modality == .image ? "photo" : "film")
                             .font(.system(size: 32))
                             .foregroundStyle(.gray)
-                        Text("生成的视频或高清图像将自动下载并在此预览")
+                        Text(L(
+                            "生成的视频或高清图像将自动下载并在此预览",
+                            "Generated videos or HD images will download automatically and preview here"
+                        ))
                             .font(.callout)
                             .foregroundStyle(.gray)
                     }
@@ -6665,18 +7933,18 @@ struct MainStudioView: View {
                     }
                     Spacer()
                     if vm.player != nil {
-                        Button("重播") {
+                        Button(L("重播", "Replay")) {
                             vm.player?.seek(to: .zero)
                             vm.player?.play()
                         }
                         .controlSize(.small)
                     } else {
-                        Button("用预览打开") {
+                        Button(L("用预览打开", "Open")) {
                             NSWorkspace.shared.open(url)
                         }
                         .controlSize(.small)
                     }
-                    Button("在 Finder 中显示") {
+                    Button(L("在 Finder 中显示", "Show in Finder")) {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                     .controlSize(.small)
@@ -6686,9 +7954,10 @@ struct MainStudioView: View {
     }
 
     private var mediaHistoryCard: some View {
-        WorkspaceCard(
-            title: "本地历史",
-            subtitle: "\(vm.localMediaItems.count) 个媒体文件",
+        let displayLocale = Locale(identifier: i18n.isEN ? "en_US" : "zh_CN")
+        return WorkspaceCard(
+            title: L("本地历史", "Local History"),
+            subtitle: L("\(vm.localMediaItems.count) 个媒体文件", "\(vm.localMediaItems.count) media files"),
             icon: "clock.arrow.circlepath",
             trailing: AnyView(
                 Button {
@@ -6697,11 +7966,11 @@ struct MainStudioView: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
-                .help("刷新本地列表")
+                .help(L("刷新本地列表", "Refresh local media list"))
             )
         ) {
             if vm.localMediaItems.isEmpty {
-                Text("暂无本地生成记录")
+                Text(L("暂无本地生成记录", "No local outputs yet"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 290)
@@ -6722,7 +7991,9 @@ struct MainStudioView: View {
                                             .font(.caption.weight(.medium))
                                             .lineLimit(1)
                                             .truncationMode(.middle)
-                                        Text(item.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                        Text(item.createdAt.formatted(
+                                            Date.FormatStyle(date: .abbreviated, time: .shortened, locale: displayLocale)
+                                        ))
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -6762,13 +8033,18 @@ struct MainStudioView: View {
     // MARK: - 右侧独立全高运行日志面板
 
     private func logLineColor(_ line: String) -> Color {
-        if line.contains("失败") || line.contains("错误") || line.contains("异常") || line.contains("ERROR") {
+        let lower = line.lowercased()
+        if line.contains("失败") || line.contains("错误") || line.contains("异常")
+            || line.contains("ERROR") || lower.contains("failed") || lower.contains("error:")
+            || lower.contains("exception") || lower.contains("traceback") {
             return Color(red: 0.98, green: 0.46, blue: 0.46)
         }
         if line.contains("───") {
             return Color(red: 0.46, green: 0.80, blue: 0.98)
         }
-        if line.contains("%") || line.contains("已装载") || line.contains("成功") || line.contains("完成") {
+        if line.contains("%") || line.contains("已装载") || line.contains("成功") || line.contains("完成")
+            || lower.contains("loaded") || lower.contains("succeeded") || lower.contains("successfully")
+            || lower.contains("completed") || lower.contains("ready in vram") {
             return Color(red: 0.35, green: 0.92, blue: 0.55)
         }
         return Color(white: 0.87)
@@ -6784,7 +8060,7 @@ struct MainStudioView: View {
                     .padding(.top, 1)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(vm.statusMessage)
+                    Text(vm.displayStatusMessage)
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(3)
@@ -6818,9 +8094,10 @@ struct MainStudioView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 5) {
                         ForEach(Array(vm.liveConsoleLines.enumerated()), id: \.offset) { idx, line in
-                            Text(line)
+                            let renderedLine = localizeConsoleLine(line)
+                            Text(renderedLine)
                                 .font(.system(size: 11.5, design: .monospaced))
-                                .foregroundStyle(logLineColor(line))
+                                .foregroundStyle(logLineColor(renderedLine))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                                 .id(idx)
@@ -7005,7 +8282,7 @@ struct TitlebarConfigurator: NSViewRepresentable {
             alignTrafficLights()
         }
 
-        private func alignTrafficLights() {
+        func alignTrafficLights() {
             guard let win = window else { return }
             let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
             for (idx, bType) in types.enumerated() {
@@ -7037,6 +8314,7 @@ struct TitlebarConfigurator: NSViewRepresentable {
 
     func updateNSView(_ nsView: ConfigView, context: Context) {
         nsView.headerHeight = headerHeight
+        nsView.alignTrafficLights()
     }
 }
 
@@ -7045,6 +8323,7 @@ struct TitlebarConfigurator: NSViewRepresentable {
 @main
 struct EasyColabApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @ObservedObject private var i18n = LanguageManager.shared
 
     init() {
         Self.migrateLegacyDefaultsIfNeeded()
@@ -7101,8 +8380,14 @@ struct EasyColabApp: App {
         .defaultSize(width: 1480, height: 900)
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .sidebar) {
+                Button(L("切换语言 (中文 / English)", "Switch Language (中文 / English)")) {
+                    LanguageManager.shared.toggle()
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+            }
             CommandGroup(replacing: .help) {
-                Button("EasyColab 新手引导与使用指南") {
+                Button(L("EasyColab 新手引导与使用指南", "EasyColab Quick Start & User Guide")) {
                     NotificationCenter.default.post(name: .openEasyColabGuide, object: nil)
                 }
                 .keyboardShortcut("/", modifiers: [.command, .shift])

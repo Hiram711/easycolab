@@ -3823,9 +3823,131 @@ def _make_zh_guide_note(node_id: int, pos: List[float], title: str, steps_md: st
         "title": title,
         "properties": {},
         "widgets_values": [steps_md],
+        "widgets_values_named": {"text": steps_md},
         "color": "#1e3a5f",
         "bgcolor": "#13263e",
     }
+
+
+def _ensure_easycolab_comfy_preset_helper(comfy_root: str, persist_root: str):
+    """
+    预置轻量前端扩展：每次通过全新 *.trycloudflare.com 域名首次打开 ComfyUI 时，
+    由于新域名 localStorage 为空，ComfyUI 默认会加载内置的 Z-Image Turbo 文生图模板，
+    并把缺失的模型自动替换成目录里字母序第一个文件（例如把 minimax_h3_audio_vae 塞进图像 VAEDecode 导致维度 24!=32 报错）。
+    本扩展会在检测到默认 Z-Image Turbo 占位图时，自动切换为用户已安装的 EasyColab 中文预置工作流。
+    """
+    if not os.path.isdir(comfy_root):
+        return
+    try:
+        helper_dir = os.path.join(comfy_root, "custom_nodes", "easycolab_preset_helper")
+        js_dir = os.path.join(helper_dir, "js")
+        os.makedirs(js_dir, exist_ok=True)
+
+        init_py = '''import os
+import json
+from aiohttp import web
+import folder_paths
+from server import PromptServer
+
+WEB_DIRECTORY = "./js"
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
+
+try:
+    if getattr(PromptServer, "instance", None) is not None:
+        @PromptServer.instance.routes.get("/easycolab/default_workflow")
+        async def _easycolab_get_default_workflow(request):
+            try:
+                get_ud = getattr(folder_paths, "get_user_directory", None)
+                user_dir = get_ud() if callable(get_ud) else os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                    "user",
+                )
+                default_dir = os.path.join(user_dir, "default")
+                wf_dir = os.path.join(default_dir, "workflows")
+                target_fn = ""
+                ptr_path = os.path.join(default_dir, "easycolab_active_preset.json")
+                if os.path.isfile(ptr_path):
+                    try:
+                        with open(ptr_path, "r", encoding="utf-8") as pf:
+                            ptr = json.load(pf)
+                        cand = str(ptr.get("workflow_filename") or "").strip()
+                        if cand and os.path.isfile(os.path.join(wf_dir, cand)):
+                            target_fn = cand
+                    except Exception:
+                        pass
+                if not target_fn and os.path.isdir(wf_dir):
+                    cands = sorted(
+                        f for f in os.listdir(wf_dir)
+                        if f.lower().endswith(".json") and not f.startswith(".")
+                    )
+                    if cands:
+                        target_fn = cands[0]
+                if target_fn:
+                    wf_path = os.path.join(wf_dir, target_fn)
+                    with open(wf_path, "r", encoding="utf-8") as wf:
+                        wf_obj = json.load(wf)
+                    return web.json_response({"ok": True, "filename": target_fn, "workflow": wf_obj})
+            except Exception as exc:
+                return web.json_response({"ok": False, "error": str(exc)})
+            return web.json_response({"ok": False})
+except Exception:
+    pass
+
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
+'''
+
+        autoload_js = '''import { app } from "../../scripts/app.js";
+
+function isBuiltInZImageStarterGraph(graph) {
+    if (!graph || !Array.isArray(graph._nodes)) return false;
+    if (graph._nodes.length === 0) return false;
+    return graph._nodes.some((n) => {
+        const models = n?.properties?.models;
+        return Array.isArray(models) && models.some((m) => String(m?.url || "").includes("z_image_turbo"));
+    });
+}
+
+app.registerExtension({
+    name: "EasyColab.PresetWorkflowAutoLoader",
+    async setup() {
+        if (sessionStorage.getItem("easycolab_preset_autoloaded_v1") === "1") {
+            return;
+        }
+        const tryAutoLoad = async (allowEmpty) => {
+            if (sessionStorage.getItem("easycolab_preset_autoloaded_v1") === "1") return true;
+            const g = app.graph;
+            const isStarter = isBuiltInZImageStarterGraph(g);
+            const isEmpty = allowEmpty && g && Array.isArray(g._nodes) && g._nodes.length === 0;
+            if (!isStarter && !isEmpty) return false;
+
+            sessionStorage.setItem("easycolab_preset_autoloaded_v1", "1");
+            try {
+                const resp = await fetch("/easycolab/default_workflow", { cache: "no-store" });
+                if (!resp.ok) return true;
+                const data = await resp.json();
+                if (data && data.ok && data.workflow) {
+                    const wfTitle = String(data.filename || "EasyColab_Preset").replace(/\\.json$/i, "");
+                    await app.loadGraphData(data.workflow, true, true, wfTitle);
+                    console.log("[EasyColab] 已自动载入预置中文工作流:", data.filename);
+                }
+            } catch (err) {
+                console.warn("[EasyColab] 自动载入预置工作流跳过:", err);
+            }
+            return true;
+        };
+
+        setTimeout(() => { tryAutoLoad(false); }, 350);
+        setTimeout(() => { tryAutoLoad(true); }, 1100);
+    },
+});
+'''
+        with open(os.path.join(helper_dir, "__init__.py"), "w", encoding="utf-8") as f_py:
+            f_py.write(init_py)
+        with open(os.path.join(js_dir, "autoload.js"), "w", encoding="utf-8") as f_js:
+            f_js.write(autoload_js)
+    except Exception as e:
+        print(f"[ComfyUI] 写入 EasyColab 默认工作流引导扩展提示: {e}")
 
 
 def _prune_workflow_dangling_links(wf_data: Dict[str, Any]):
@@ -3868,6 +3990,7 @@ def _build_and_install_comfy_preset_workflows(
                 if n.get("id") == 97 and ntype == "LoadImage":
                     n["title"] = "① 点击此处选择起始图片 (Choose file to upload)"
                     n["widgets_values"] = ["easycolab_sample_start.png", "image"]
+                    n.pop("widgets_values_named", None)
                 elif n.get("id") == 129:
                     n["title"] = "② 填写画面动作与镜头描述 (G4 已预设 1280×720 · 4步极速)"
                     wv = list(n.get("widgets_values") or [])
@@ -3876,9 +3999,11 @@ def _build_and_install_comfy_preset_workflows(
                         wv[1] = 1280
                         wv[2] = 720
                     n["widgets_values"] = wv
+                    n.pop("widgets_values_named", None)
                 elif ntype == "SaveVideo":
                     n["title"] = "③ 生成结果预览与自动保存 (右键可下载视频)"
                     n["widgets_values"] = ["video/Wan2.2_单图生视频", "auto", "auto"]
+                    n.pop("widgets_values_named", None)
                 kept_nodes.append(n)
             kept_nodes.append(_make_zh_guide_note(
                 501,
@@ -3917,23 +4042,28 @@ def _build_and_install_comfy_preset_workflows(
                     # link 157 -> node 67 slot 5 (start_image)
                     n["title"] = "① 点击上传起始首帧图片 (Start Frame)"
                     n["widgets_values"] = ["easycolab_sample_start.png", "image"]
+                    n.pop("widgets_values_named", None)
                 elif nid == 62 and n.get("type") == "LoadImage":
                     # link 158 -> node 67 slot 6 (end_image)
                     n["title"] = "② 点击上传结束尾帧图片 (End Frame)"
                     n["widgets_values"] = ["easycolab_sample_end.png", "image"]
+                    n.pop("widgets_values_named", None)
                 elif nid == 6 and n.get("type") == "CLIPTextEncode":
                     n["title"] = "③ 输入首尾帧过渡动作与运镜描述 (正向提示词)"
                     n["widgets_values"] = [
                         "清晨海面的朝阳缓缓升起并化作绚丽的傍晚漫天晚霞，镜头平稳向右推进，云层与海浪自然流动过渡，光影由冷蓝渐变为温暖金红，画面连贯丝滑。"
                     ]
+                    n.pop("widgets_values_named", None)
                 elif nid == 7 and n.get("type") == "CLIPTextEncode":
                     n["title"] = "反向提示词 (保持默认即可)"
                 elif nid == 67 and n.get("type") == "WanFirstLastFrameToVideo":
                     n["title"] = "④ 视频尺寸与总帧数 (81帧≈5秒 · 1280×720)"
                     n["widgets_values"] = [1280, 720, 81, 1]
+                    n.pop("widgets_values_named", None)
                 elif nid == 61 and n.get("type") == "SaveVideo":
                     n["title"] = "⑤ 首尾帧过渡成片预览与自动保存"
                     n["widgets_values"] = ["video/Wan2.2_首尾帧过渡", "auto", "auto"]
+                    n.pop("widgets_values_named", None)
                 flf_nodes.append(n)
 
             flf_nodes.append(_make_zh_guide_note(
@@ -3995,10 +4125,16 @@ def _build_and_install_comfy_preset_workflows(
                     if nid == 114 and ntype == "LoadImage":
                         n["title"] = "① 点击上传起始首帧图片 (First Frame)"
                         n["widgets_values"] = ["easycolab_sample_start.png", "image"]
+                        n["widgets_values_named"] = {"image": "easycolab_sample_start.png", "upload": "image"}
                         n["pos"] = [-1320, 4820]
                     elif nid == 115 and ntype == "ResolutionSelector":
                         n["title"] = "画幅比例与清晰度 (0.6≈1056×608 · 0.98=1344×768)"
                         n["widgets_values"] = ["16:9 (Widescreen)", 0.6, 32]
+                        n["widgets_values_named"] = {
+                            "aspect_ratio": "16:9 (Widescreen)",
+                            "megapixels": 0.6,
+                            "multiple": 32,
+                        }
                         n["pos"] = [-1320, 5660] if is_dual_frame else [-1320, 5260]
                     elif nid == 105:
                         n["title"] = (
@@ -4006,24 +4142,30 @@ def _build_and_install_comfy_preset_workflows(
                             if is_dual_frame
                             else "② 填写画面动作 + 音效配乐描述 (8步 Turbo 极速已开启)"
                         )
+                        zh_prompt = (
+                            "电影级航拍镜头：画面从清晨宁静的蔚蓝海岸平稳推进并过渡至漫天金红晚霞的黄昏海湾，海浪轻拍礁石，光影自然流转。\n"
+                            "Audio: 轻柔的海浪拍岸声、温暖的海风吹拂声，伴随舒缓治愈的钢琴与大提琴电影配乐。"
+                            if is_dual_frame
+                            else "电影级运镜缓慢向前推进，清晨阳光穿透薄雾洒在海面，金光波光粼粼，飞鸟掠过天际。\n"
+                                 "Audio: 清脆的海浪声、微风声与远处海鸥鸣叫，搭配温柔空灵的钢琴环境配乐。"
+                        )
                         wv = list(n.get("widgets_values") or [])
                         if len(wv) >= 10:
-                            wv[0] = (
-                                "电影级航拍镜头：画面从清晨宁静的蔚蓝海岸平稳推进并过渡至漫天金红晚霞的黄昏海湾，海浪轻拍礁石，光影自然流转。\n"
-                                "Audio: 轻柔的海浪拍岸声、温暖的海风吹拂声，伴随舒缓治愈的钢琴与大提琴电影配乐。"
-                                if is_dual_frame
-                                else "电影级运镜缓慢向前推进，清晨阳光穿透薄雾洒在海面，金光波光粼粼，飞鸟掠过天际。\n"
-                                     "Audio: 清脆的海浪声、微风声与远处海鸥鸣叫，搭配温柔空灵的钢琴环境配乐。"
-                            )
+                            wv[0] = zh_prompt
                             wv[9] = True  # 默认启用 8-step Turbo LoRA 极速出片
                         n["widgets_values"] = wv
+                        if isinstance(n.get("widgets_values_named"), dict):
+                            n["widgets_values_named"]["prompt"] = zh_prompt
+                            n["widgets_values_named"]["value"] = True
                     elif nid == 92 and ntype == "SaveVideo":
                         n["title"] = "④ 有声视频预览与自动保存 (请打开播放器音量!)"
-                        n["widgets_values"] = [
-                            "video/MiniMax_H3_首尾帧有声" if is_dual_frame else "video/MiniMax_H3_图生有声",
-                            "auto",
-                            "auto",
-                        ]
+                        vid_prefix = "video/MiniMax_H3_首尾帧有声" if is_dual_frame else "video/MiniMax_H3_图生有声"
+                        n["widgets_values"] = [vid_prefix, "auto", "auto"]
+                        n["widgets_values_named"] = {
+                            "filename_prefix": vid_prefix,
+                            "format": "auto",
+                            "codec": "auto",
+                        }
                     nodes_out.append(n)
 
                 links_out = [lk for lk in d_h3.get("links", []) if lk[0] != 228]
@@ -4043,6 +4185,7 @@ def _build_and_install_comfy_preset_workflows(
                         "title": "② 点击上传结束尾帧图片 (Last Frame)",
                         "properties": {"Node name for S&R": "LoadImage"},
                         "widgets_values": ["easycolab_sample_end.png", "image"],
+                        "widgets_values_named": {"image": "easycolab_sample_end.png", "upload": "image"},
                     })
                     for n in nodes_out:
                         if n.get("id") == 105:
@@ -4099,14 +4242,17 @@ def _build_and_install_comfy_preset_workflows(
                 if nid == 31 and ntype == "LoadImage":
                     n["title"] = "① 点击上传起始首帧图片 (First Frame)"
                     n["widgets_values"] = ["easycolab_sample_start.png", "image"]
+                    n.pop("widgets_values_named", None)
                 elif nid == 39 and ntype == "LoadImage":
                     n["title"] = "② 点击上传结束尾帧图片 (Last Frame)"
                     n["widgets_values"] = ["easycolab_sample_end.png", "image"]
+                    n.pop("widgets_values_named", None)
                 elif nid == 129:
                     n["title"] = "③ 首尾帧电影运镜与音轨参数 (LTX-2.3 22B Distilled)"
                 elif nid == 68 and ntype == "SaveVideo":
                     n["title"] = "④ 电影运镜成片预览与自动保存"
                     n["widgets_values"] = ["video/LTX2.3_首尾帧运镜", "auto", "auto"]
+                    n.pop("widgets_values_named", None)
                 ltx_nodes.append(n)
 
             ltx_nodes.append(_make_zh_guide_note(
@@ -4145,16 +4291,19 @@ def _build_and_install_comfy_preset_workflows(
                 if nid == 80 and n.get("type") == "LoadImage":
                     n["title"] = "① 点击上传起始首帧图片 (720P → 1080P 超分)"
                     n["widgets_values"] = ["easycolab_sample_start.png", "image"]
+                    n.pop("widgets_values_named", None)
                 elif nid == 44 and n.get("type") == "CLIPTextEncode":
                     n["title"] = "② 输入画面动作与光影描述 (中英文皆可)"
                     n["widgets_values"] = [
                         "清晨阳光洒在壮阔的海岸山脉上，镜头平稳向前推进，海面波光粼粼，云雾在山谷间缓慢流动，极致写实电影摄影质感。"
                     ]
+                    n.pop("widgets_values_named", None)
                 elif nid in (127, 131) and n.get("type") == "RandomNoise":
                     wv = list(n.get("widgets_values") or [42, "randomize"])
                     if len(wv) >= 2:
                         wv[1] = "randomize"
                     n["widgets_values"] = wv
+                    n.pop("widgets_values_named", None)
                 elif nid == 102 and n.get("type") == "SaveVideo":
                     n["title"] = "③ 720P 基础成片预览"
                 elif nid == 118 and n.get("type") == "SaveVideo":
@@ -4191,6 +4340,17 @@ def _build_and_install_comfy_preset_workflows(
             installed_files.append(os.path.basename(out_6))
         except Exception as e:
             print(f"[ComfyUI 工作流生成] Hunyuan 1.5 模板处理异常: {e}")
+
+    if installed_files:
+        try:
+            with open(os.path.join(wf_dir, ".easycolab_wf_schema_v2"), "w", encoding="utf-8") as sf:
+                sf.write("v2")
+            ptr_path = os.path.join(persist_root, "user", "default", "easycolab_active_preset.json")
+            if (pack_ids and len(pack_ids) == 1) or not os.path.isfile(ptr_path):
+                with open(ptr_path, "w", encoding="utf-8") as pf:
+                    json.dump({"workflow_filename": installed_files[0]}, pf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     _COMFY_STATUS_CACHE["ts"] = 0.0
     return installed_files
@@ -4846,14 +5006,15 @@ def start_comfyui_core(unload_existing: bool = False, force_restart: bool = Fals
         _safe_symlink_dir(os.path.join(persist_root, "output"), os.path.join(comfy_root, "output"))
         _ensure_comfyui_beginner_assets(comfy_root, persist_root)
 
-        # 若云盘中已有任何预置包的全部权重但缺少中文工作流文件，自动补齐对应中文工作流
+        # 若云盘中已有任何预置包的全部权重，但缺少中文工作流文件或工作流版本尚未升级至 v2 (修复 widgets_values_named 兼容)，自动重新生成
+        wf_dir_chk = os.path.join(persist_root, "user", "default", "workflows")
+        schema_v2_ok = os.path.isfile(os.path.join(wf_dir_chk, ".easycolab_wf_schema_v2"))
         for pk in COMFY_PRESET_WORKFLOW_PACKS:
             if all(
                 os.path.isfile(os.path.join(persist_root, "models", sub, fn))
                 for sub, fn, _, _, _ in pk["models"]
             ):
-                wf_dir_chk = os.path.join(persist_root, "user", "default", "workflows")
-                if not all(os.path.isfile(os.path.join(wf_dir_chk, w)) for w in pk["workflows"]):
+                if (not schema_v2_ok) or (not all(os.path.isfile(os.path.join(wf_dir_chk, w)) for w in pk["workflows"])):
                     _build_and_install_comfy_preset_workflows(persist_root, [pk["id"]])
 
         # 4. 恢复已持久化的自定义节点至本地高速 NVMe，并预装 ComfyUI-Manager 与 VideoHelperSuite 视频核心节点
@@ -4865,7 +5026,7 @@ def start_comfyui_core(unload_existing: bool = False, force_restart: bool = Fals
         os.makedirs(cn_persist, exist_ok=True)
 
         for entry in sorted(os.listdir(cn_persist)):
-            if entry.startswith(".") or entry == "__pycache__":
+            if entry.startswith(".") or entry in ("__pycache__", "easycolab_preset_helper"):
                 continue
             src_p = os.path.join(cn_persist, entry)
             dst_p = os.path.join(cn_local, entry)
@@ -4898,6 +5059,7 @@ def start_comfyui_core(unload_existing: bool = False, force_restart: bool = Fals
                 print(f"[ComfyUI] 正在预装核心插件 {node_dir_name}...")
                 subprocess.run(["git", "clone", "--depth", "1", repo_url, target_node_dir], check=False)
 
+        _ensure_easycolab_comfy_preset_helper(comfy_root, persist_root)
         _ensure_comfyui_manager_tunnel_config(comfy_root, persist_root)
 
         COMFYUI_STATE["progress"] = 0.70
@@ -7809,21 +7971,51 @@ CUSTOM_CSS = """
 """
 
 
+WEBUI_HEADER_ZH = """
+<div class="header-banner">
+    <h1>⚡ EasyColab · Google Colab 多模态 AI 推理与生成服务端</h1>
+    <p>支持 <b>ComfyUI 节点工作台 (云盘软链持久化) · MiniMax-H3 · Qwen3.8-27B (GGUF+MTP / BF16) · Qwen-Image-2.1 · Z-Image-Turbo</b> · 自动关机看门狗</p>
+</div>
+"""
+
+WEBUI_HEADER_EN = """
+<div class="header-banner">
+    <h1>⚡ EasyColab · Google Colab Multimodal AI Inference & Generation Server</h1>
+    <p>Supports <b>ComfyUI Node Studio (Google Drive Persistence) · MiniMax-H3 · Qwen3.8-27B (GGUF+MTP / BF16) · Qwen-Image-2.1 · Z-Image-Turbo</b> · Idle Auto-Shutdown Watchdog</p>
+</div>
+"""
+
+RESOLUTION_CHOICES_ZH = [
+    ("832 × 480 (16:9 横屏标准 - 推荐)", "832 × 480 (16:9 横屏标准 - 推荐)"),
+    ("480 × 832 (9:16 竖屏短视频)", "480 × 832 (9:16 竖屏短视频)"),
+    ("1280 × 720 (16:9 720P 高清)", "1280 × 720 (16:9 720P 高清)"),
+    ("720 × 1280 (9:16 720P 竖屏高清)", "720 × 1280 (9:16 720P 竖屏高清)"),
+    ("640 × 640 (1:1 方形)", "640 × 640 (1:1 方形)"),
+]
+
+RESOLUTION_CHOICES_EN = [
+    ("832 × 480 (16:9 Landscape · Recommended)", "832 × 480 (16:9 横屏标准 - 推荐)"),
+    ("480 × 832 (9:16 Portrait Short)", "480 × 832 (9:16 竖屏短视频)"),
+    ("1280 × 720 (16:9 720P HD)", "1280 × 720 (16:9 720P 高清)"),
+    ("720 × 1280 (9:16 720P Portrait HD)", "720 × 1280 (9:16 720P 竖屏高清)"),
+    ("640 × 640 (1:1 Square)", "640 × 640 (1:1 方形)"),
+]
+
+
 def create_ui() -> gr.Blocks:
     with gr.Blocks(title="EasyColab · Colab 多模型 AI 服务端") as demo:
-        gr.HTML(
-            """
-            <div class="header-banner">
-                <h1>⚡ EasyColab · Google Colab 多模态 AI 推理与生成服务端</h1>
-                <p>支持 <b>ComfyUI 节点工作台 (云盘软链持久化) · MiniMax-H3 · Qwen3.8-27B (GGUF+MTP / BF16) · Qwen-Image-2.1 · Z-Image-Turbo</b> · 自动关机看门狗</p>
-            </div>
-            """
-        )
+        ui_lang_state = gr.State(value="zh")
+
+        with gr.Row():
+            with gr.Column(scale=9):
+                header_html = gr.HTML(WEBUI_HEADER_ZH)
+            with gr.Column(scale=1, min_width=130):
+                lang_toggle_btn = gr.Button("🌐 English", size="sm", variant="secondary")
 
         with gr.Row():
             with gr.Column(scale=4):
                 with gr.Group():
-                    gr.Markdown("### 📦 1. 模型权重管理中心 (先下载检查，再加载显存)")
+                    sec1_md = gr.Markdown("### 📦 1. 模型权重管理中心 (先下载检查，再加载显存)")
                     gpu_status_text = gr.Textbox(
                         label="硬件、算力消耗与模型检查报告",
                         value=get_gpu_and_model_summary_text(),
@@ -7850,7 +8042,7 @@ def create_ui() -> gr.Blocks:
                         label="显存加载与卸载策略 (VRAM Strategy)",
                     )
 
-                    with gr.Accordion("🔑 Hugging Face Token (可选)", open=False):
+                    with gr.Accordion("🔑 Hugging Face Token (可选 / Optional)", open=False):
                         hf_token_input = gr.Textbox(
                             label="HF Access Token",
                             placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxx",
@@ -7868,9 +8060,9 @@ def create_ui() -> gr.Blocks:
                         )
 
                 with gr.Group():
-                    gr.Markdown("### ⚙️ 2. 视频与采样参数")
+                    sec2_md = gr.Markdown("### ⚙️ 2. 视频与采样参数")
                     resolution_dropdown = gr.Dropdown(
-                        choices=list(RESOLUTION_MAP.keys()),
+                        choices=RESOLUTION_CHOICES_ZH,
                         value="832 × 480 (16:9 横屏标准 - 推荐)",
                         label="输出分辨率 (Resolution)",
                     )
@@ -7912,17 +8104,17 @@ def create_ui() -> gr.Blocks:
                         label="📂 视频自动保存路径",
                     )
 
-                with gr.Accordion("💡 Google AI Ultra 算力省额度工具", open=True):
+                with gr.Accordion("💡 Google Colab 算力省额度工具 / Compute Quota Saver", open=True):
                     disconnect_btn = gr.Button("🛑 停止任务并释放 Colab 运行时 (省计算单元)", variant="stop")
 
             with gr.Column(scale=6):
                 task_mode_state = gr.State(value="t2va")
 
                 with gr.Tabs() as mode_tabs:
-                    with gr.TabItem("✨ 文生音视频 (T2VA)", id="t2va") as tab_t2va:
-                        gr.Markdown("输入画面描述与声音细节，同步生成高清视频与 **32kHz 立体声音轨**。")
+                    with gr.TabItem("✨ 文生音视频 / T2VA", id="t2va") as tab_t2va:
+                        t2va_desc_md = gr.Markdown("输入画面描述与声音细节，同步生成高清视频与 **32kHz 立体声音轨**。")
 
-                    with gr.TabItem("🖼️ 首尾帧图生音视频 (FL2VA)", id="fl2va") as tab_fl2va:
+                    with gr.TabItem("🖼️ 首尾帧生音视频 / FL2VA", id="fl2va") as tab_fl2va:
                         with gr.Row():
                             first_frame_input = gr.Image(
                                 label="📌 首帧图片 (First Frame - index 0)",
@@ -7973,7 +8165,7 @@ def create_ui() -> gr.Blocks:
                         elem_classes=["status-box"],
                     )
 
-                with gr.Accordion("📚 动漫风格提示词一键体验模板", open=True):
+                with gr.Accordion("📚 提示词一键体验模板 / Preset Prompt Templates", open=True):
                     gr.Examples(
                         examples=PRESET_EXAMPLES,
                         inputs=[
@@ -7986,7 +8178,7 @@ def create_ui() -> gr.Blocks:
                         ],
                     )
 
-                with gr.Accordion("🗂️ 本次会话历史生成记录 (History)", open=False):
+                with gr.Accordion("🗂️ 本次会话历史生成记录 / Session History", open=False):
                     history_gallery = gr.Gallery(
                         label="已生成的视频文件",
                         value=get_history_videos(DEFAULT_OUTPUT_DIR),
@@ -7994,6 +8186,114 @@ def create_ui() -> gr.Blocks:
                         height=240,
                     )
                     refresh_history_btn = gr.Button("🔄 刷新历史记录", size="sm")
+
+        def _toggle_webui_lang(cur_lang: str, cur_prec: str, cur_offload: str, cur_res: str, cur_status: str):
+            new_lang = "en" if cur_lang == "zh" else "zh"
+            is_en = new_lang == "en"
+            default_zh_status = "请先在左侧点击「1. 极速下载模型权重」并「2. 加载模型至显存」..."
+            default_en_status = "Click '1. Download Weights' then '2. Load to VRAM' on the left to get started..."
+            if is_en and cur_status == default_zh_status:
+                next_status = default_en_status
+            elif not is_en and cur_status == default_en_status:
+                next_status = default_zh_status
+            else:
+                next_status = cur_status
+
+            return (
+                new_lang,
+                WEBUI_HEADER_EN if is_en else WEBUI_HEADER_ZH,
+                "🌐 简体中文" if is_en else "🌐 English",
+                "### 📦 1. Model Weights Center (Download First, Then Load to VRAM)" if is_en else "### 📦 1. 模型权重管理中心 (先下载检查，再加载显存)",
+                gr.update(label="Hardware, CU Usage & Model Inspection Report" if is_en else "硬件、算力消耗与模型检查报告"),
+                "🔍 Check / Refresh GPU & Model Status" if is_en else "🔍 检查 / 刷新模型与算力状态",
+                gr.update(
+                    choices=[
+                        ("Native BF16 Full Precision (Recommended for G4 96GB)" if is_en else "BF16 原生精度版 (官方满血权重 · G4 96GB 极速推理)", "bf16"),
+                    ],
+                    value=cur_prec or "bf16",
+                    label="Model Precision" if is_en else "模型权重精度",
+                ),
+                gr.update(
+                    choices=[
+                        ("⚡ Zero-Copy Fast Mapping + GPU VRAM Resident (Recommended · ~5s)" if is_en else "⚡ 零拷贝极速映射 + GPU 显存常驻 (推荐 · 5秒秒加载)", "disk"),
+                        ("Full CPU RAM Preload (Slower · ~3-5 min)" if is_en else "CPU 内存全量预载 (耗时较长 · 约3~5分钟)", "cpu"),
+                    ],
+                    value=cur_offload or "disk",
+                    label="VRAM Loading Strategy" if is_en else "显存加载与卸载策略 (VRAM Strategy)",
+                ),
+                "📥 1. Download Model Weights" if is_en else "📥 1. 极速下载模型权重",
+                "🚀 2. Load Model to VRAM" if is_en else "🚀 2. 加载模型至显存",
+                "### ⚙️ 2. Video & Sampling Parameters" if is_en else "### ⚙️ 2. 视频与采样参数",
+                gr.update(
+                    choices=RESOLUTION_CHOICES_EN if is_en else RESOLUTION_CHOICES_ZH,
+                    value=cur_res or "832 × 480 (16:9 横屏标准 - 推荐)",
+                    label="Output Resolution" if is_en else "输出分辨率 (Resolution)",
+                ),
+                gr.update(label="Total Frames (90~362 frames ≈ 4~15s, 17n+5 aligned)" if is_en else "生成总帧数 (90~362帧 ≈ 4~15秒, 17n+5 对齐)"),
+                gr.update(label="Frame Rate (FPS)" if is_en else "帧率 (FPS)"),
+                gr.update(label="Inference Steps (30~50 recommended)" if is_en else "采样步数 (Inference Steps，推荐 30~50)"),
+                gr.update(label="Seed" if is_en else "随机种子 (Seed)"),
+                gr.update(label="🎲 Randomize Seed Every Run" if is_en else "🎲 每次随机种子"),
+                gr.update(label="📂 Output Save Directory" if is_en else "📂 视频自动保存路径"),
+                "🛑 Stop Jobs & Release Colab Runtime (Save CU)" if is_en else "🛑 停止任务并释放 Colab 运行时 (省计算单元)",
+                "Describe visual scenes and soundscapes to generate HD video with **32kHz stereo audio**." if is_en else "输入画面描述与声音细节，同步生成高清视频与 **32kHz 立体声音轨**。",
+                gr.update(label="📌 First Frame Image (index 0)" if is_en else "📌 首帧图片 (First Frame - index 0)"),
+                gr.update(label="🏁 Last Frame Image (index -1, Optional)" if is_en else "🏁 尾帧图片 (Last Frame - index -1，可选)"),
+                gr.update(
+                    label="🎥 Visual & Camera Prompt" if is_en else "🎥 画面主体与镜头描述 (Visual & Camera Prompt)",
+                    placeholder="Describe subject, motion, camera movement, lighting, and visual style..." if is_en else "描述画面主体、动作、运镜方式、光影风格...",
+                ),
+                gr.update(
+                    label="🔊 Soundscape & Dialogue (Optional)" if is_en else "🔊 环境音效与人声描述 (Soundscape & Foley - 可选)",
+                    placeholder="e.g., Raindrops hitting pavement, footsteps in puddles, soft spoken dialogue..." if is_en else "例如：雨滴敲击声、脚步踩水声、温柔的女声独白...",
+                ),
+                gr.update(
+                    label="🎵 Background Music Style (Optional)" if is_en else "🎵 背景配乐风格 (Background Music - 可选)",
+                    placeholder="e.g., Moody cyberpunk synthwave, soaring orchestral strings..." if is_en else "例如：低沉的赛博朋克合成器电子乐、恢弘管弦乐...",
+                ),
+                "🎬 Generate Video + Stereo Audio" if is_en else "🎬 开始生成音视频 (Generate Video + Stereo Audio)",
+                gr.update(label="🎞️ Output Preview (Unmute player for native stereo audio)" if is_en else "🎞️ 生成结果预览 (请开启播放器声音体验原生立体声)"),
+                gr.update(label="Run Status & Logs" if is_en else "运行日志与状态", value=next_status),
+                gr.update(label="Generated Videos" if is_en else "已生成的视频文件"),
+                "🔄 Refresh History" if is_en else "🔄 刷新历史记录",
+            )
+
+        lang_toggle_btn.click(
+            fn=_toggle_webui_lang,
+            inputs=[ui_lang_state, precision_Choice, offload_choice, resolution_dropdown, run_status_box],
+            outputs=[
+                ui_lang_state,
+                header_html,
+                lang_toggle_btn,
+                sec1_md,
+                gpu_status_text,
+                refresh_gpu_btn,
+                precision_Choice,
+                offload_choice,
+                download_model_btn,
+                load_model_btn,
+                sec2_md,
+                resolution_dropdown,
+                num_frames_slider,
+                fps_slider,
+                steps_slider,
+                seed_input,
+                randomize_seed_chk,
+                save_dir_input,
+                disconnect_btn,
+                t2va_desc_md,
+                first_frame_input,
+                last_frame_input,
+                visual_prompt_input,
+                soundscape_prompt_input,
+                music_prompt_input,
+                generate_btn,
+                output_video,
+                run_status_box,
+                history_gallery,
+                refresh_history_btn,
+            ],
+        )
 
         tab_t2va.select(fn=lambda: "t2va", inputs=None, outputs=task_mode_state)
         tab_fl2va.select(fn=lambda: "fl2va", inputs=None, outputs=task_mode_state)

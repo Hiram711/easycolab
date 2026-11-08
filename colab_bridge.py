@@ -26,11 +26,25 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 
+def _ensure_utf8_stdio():
+    """确保 Windows / macOS 子进程管道输出始终采用 UTF-8 编码，避免 emoji 在 GBK 代码页下抛出 UnicodeEncodeError"""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
+_ensure_utf8_stdio()
+
+
 def _sync_macos_system_proxies_to_env():
     """
     macOS 原生 GUI 应用启动子进程时默认不包含终端的 HTTP_PROXY / HTTPS_PROXY 环境变量，
     而 websocket-client (Jupyter 内核 WebSocket 通道) 仅从 os.environ 读取代理配置。
-    此处自动读取 macOS 系统级代理 (scutil --proxy / urllib.request.getproxies) 并注入环境变量。
+    此处自动读取 macOS / Windows 系统级代理 (scutil --proxy / Internet Settings / urllib.request.getproxies) 并注入环境变量。
     """
     try:
         proxies = urllib.request.getproxies()
@@ -55,10 +69,10 @@ from colab_cli.contents import ContentsClient
 def _load_client_config() -> dict:
     cfg_path = os.path.expanduser("~/.colab-cli-oauth-config.json")
     if os.path.exists(cfg_path):
-        with open(cfg_path, "r") as f:
+        with open(cfg_path, "r", encoding="utf-8") as f:
             return json.load(f)
     res = resources.files("colab_cli").joinpath("oauth_config.json")
-    return json.loads(res.read_text())
+    return json.loads(res.read_text(encoding="utf-8"))
 
 
 def _has_valid_token() -> bool:
@@ -70,7 +84,7 @@ def _has_valid_token() -> bool:
             return True
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            with open(TOKEN_CONFIG_PATH, "w") as f:
+            with open(TOKEN_CONFIG_PATH, "w", encoding="utf-8") as f:
                 f.write(creds.to_json())
             return True
     except Exception:
@@ -103,7 +117,7 @@ def _get_account_email() -> str:
         creds = Credentials.from_authorized_user_file(TOKEN_CONFIG_PATH, PUBLIC_SCOPES)
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            with open(TOKEN_CONFIG_PATH, "w") as f:
+            with open(TOKEN_CONFIG_PATH, "w", encoding="utf-8") as f:
                 f.write(creds.to_json())
         tok_fp = (creds.refresh_token or creds.token or "")[-20:]
         if tok_fp and os.path.exists(ACCOUNT_PROFILE_CACHE_PATH):
@@ -140,7 +154,7 @@ def cmd_auth_url():
     auth_url, _ = flow.authorization_url(prompt="select_account consent", token_usage="remote")
     os.makedirs(os.path.dirname(PKCE_VERIFIER_PATH), exist_ok=True)
     if getattr(flow, "code_verifier", None):
-        with open(PKCE_VERIFIER_PATH, "w") as f:
+        with open(PKCE_VERIFIER_PATH, "w", encoding="utf-8") as f:
             f.write(flow.code_verifier)
     print(json.dumps({"ok": True, "auth_url": auth_url}))
 
@@ -151,7 +165,7 @@ def cmd_auth_code(code: str):
         flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
         flow.redirect_uri = REMOTE_REDIRECT_URI
         if os.path.exists(PKCE_VERIFIER_PATH):
-            with open(PKCE_VERIFIER_PATH, "r") as f:
+            with open(PKCE_VERIFIER_PATH, "r", encoding="utf-8") as f:
                 flow.code_verifier = f.read().strip()
         flow.fetch_token(code=code.strip())
         creds = flow.credentials
@@ -163,7 +177,7 @@ def cmd_auth_code(code: str):
                 except Exception:
                     pass
         os.makedirs(os.path.dirname(TOKEN_CONFIG_PATH), exist_ok=True)
-        with open(TOKEN_CONFIG_PATH, "w") as f:
+        with open(TOKEN_CONFIG_PATH, "w", encoding="utf-8") as f:
             f.write(creds.to_json())
         return cmd_auth_status()
     except Exception as e:
@@ -242,7 +256,7 @@ def _build_rclone_drive_conf() -> str:
         creds = Credentials.from_authorized_user_file(TOKEN_CONFIG_PATH, PUBLIC_SCOPES)
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            with open(TOKEN_CONFIG_PATH, "w") as f:
+            with open(TOKEN_CONFIG_PATH, "w", encoding="utf-8") as f:
                 f.write(creds.to_json())
         raw = json.loads(creds.to_json())
         scopes = raw.get("scopes") or []
@@ -771,7 +785,7 @@ def cmd_keepalive():
         print(json.dumps({"ok": False, "logged_in": True, "error": str(e)}))
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -793,7 +807,7 @@ def main():
     sub.add_parser("keepalive")
     sub.add_parser("stop_all")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.cmd == "auth_status":
         cmd_auth_status()
     elif args.cmd == "auth_url":
@@ -810,10 +824,15 @@ def main():
         cmd_stop_all()
 
 
-if __name__ == "__main__":
+def run_cli(argv=None):
+    """供独立 CLI 或打包后的 Windows exe (--bridge-cli) 子进程模式统一调用"""
     try:
-        main()
+        main(argv)
     finally:
         sys.stdout.flush()
         sys.stderr.flush()
         os._exit(0)
+
+
+if __name__ == "__main__":
+    run_cli()
