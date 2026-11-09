@@ -3659,6 +3659,8 @@ _COMFY_PROTECTED_PIP_PKGS = re.compile(
     re.IGNORECASE,
 )
 _COMFY_BG_SYNC_STARTED = False
+_COMFY_ADOPT_CHECKED = False
+_COMFY_STATE_FILE = "/tmp/.easycolab_comfy_state.json"
 _COMFY_STATUS_CACHE: Dict[str, Any] = {"ts": 0.0, "counts": (0, 0, 0), "outputs": [], "packs": []}
 
 COMFY_TEMPLATE_RAW_BASE = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/"
@@ -4511,6 +4513,93 @@ def _scan_comfyui_counts_and_outputs() -> Tuple[Tuple[int, int, int], List[Dict[
     return (cn_count, m_count, wf_count), recent_outputs
 
 
+def _try_adopt_running_comfyui():
+    """若 app.py 热更新重启前实例上已有在线 ComfyUI 与 cloudflared 隧道，自动无缝接管，不断开用户已打开的画布"""
+    global _COMFY_ADOPT_CHECKED, _COMFY_BG_SYNC_STARTED
+    if _COMFY_ADOPT_CHECKED or COMFYUI_STATE.get("is_running") or COMFYUI_STATE.get("is_starting"):
+        return
+    _COMFY_ADOPT_CHECKED = True
+
+    port = int(COMFYUI_STATE.get("local_port") or COMFY_BACKEND)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(f"http://127.0.0.1:{port}/system_stats", timeout=1.0) as resp:
+            if resp.status != 200:
+                return
+    except Exception:
+        return
+
+    pub_url = ""
+    if os.path.isfile(_COMFY_STATE_FILE):
+        try:
+            st_obj = json.load(open(_COMFY_STATE_FILE, "r", encoding="utf-8"))
+            pub_url = str(st_obj.get("public_url") or "").strip()
+        except Exception:
+            pub_url = ""
+
+    if not pub_url:
+        cf_re = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+        for m_port in range(20241, 20247):
+            for ep in ("/quicktunnel", "/metrics"):
+                try:
+                    with opener.open(f"http://127.0.0.1:{m_port}{ep}", timeout=0.6) as mr:
+                        body = mr.read().decode("utf-8", errors="ignore")
+                    m = cf_re.search(body)
+                    if m:
+                        pub_url = m.group(0)
+                        break
+                    m_host = re.search(r'"hostname"\s*:\s*"([a-zA-Z0-9-]+\.trycloudflare\.com)"', body)
+                    if m_host:
+                        pub_url = "https://" + m_host.group(1)
+                        break
+                except Exception:
+                    pass
+            if pub_url:
+                break
+
+    if not pub_url:
+        try:
+            cf_bin = _ensure_cloudflared_binary()
+            tunnel_proc = subprocess.Popen(
+                [cf_bin, "tunnel", "--url", f"http://127.0.0.1:{COMFY_INGRESS}", "--no-autoupdate"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            COMFYUI_STATE["tunnel_proc"] = tunnel_proc
+            cf_re = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+            if tunnel_proc.stdout is not None:
+                t_end = time.time() + 12.0
+                while time.time() < t_end:
+                    ln = tunnel_proc.stdout.readline()
+                    if not ln:
+                        break
+                    m = cf_re.search(ln)
+                    if m:
+                        pub_url = m.group(0)
+                        break
+        except Exception:
+            pass
+
+    comfy_root, persist_root, _, label, _ = _resolve_comfyui_persistence_paths()
+    _ensure_comfyui_beginner_assets(comfy_root, persist_root)
+    COMFYUI_STATE["is_running"] = True
+    COMFYUI_STATE["public_url"] = pub_url
+    COMFYUI_STATE["progress"] = 1.0
+    COMFYUI_STATE["status_message"] = f"已无缝接管在线 ComfyUI 画布（{label}）"
+    if pub_url:
+        try:
+            with open(_COMFY_STATE_FILE, "w", encoding="utf-8") as sf:
+                json.dump({"public_url": pub_url, "port": port}, sf)
+        except Exception:
+            pass
+    if not _COMFY_BG_SYNC_STARTED:
+        _COMFY_BG_SYNC_STARTED = True
+        threading.Thread(target=_comfyui_periodic_drive_sync_loop, daemon=True).start()
+    print(f"[ComfyUI] 已自动接管实例上正在运行的 ComfyUI 服务: {pub_url or f'127.0.0.1:{port}'}")
+
+
 def _poll_local_comfyui_runtime_quiet():
     proc = COMFYUI_STATE.get("comfy_proc")
     if proc is not None and proc.poll() is not None:
@@ -4523,7 +4612,9 @@ def _poll_local_comfyui_runtime_quiet():
         return
 
     if not COMFYUI_STATE.get("is_running"):
-        return
+        _try_adopt_running_comfyui()
+        if not COMFYUI_STATE.get("is_running"):
+            return
 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     port = int(COMFYUI_STATE.get("local_port") or COMFY_BACKEND)
@@ -4814,6 +4905,11 @@ def stop_comfyui_core(sync_before_stop: bool = True) -> Tuple[bool, str]:
                 COMFYUI_STATE[key] = None
         subprocess.run(["pkill", "-f", "ComfyUI/main.py"], check=False)
         subprocess.run(["pkill", "-f", "cloudflared.*8188"], check=False)
+        if os.path.exists(_COMFY_STATE_FILE):
+            try:
+                os.remove(_COMFY_STATE_FILE)
+            except Exception:
+                pass
         _reclaim_transient_gpu_memory()
         COMFYUI_STATE["is_running"] = False
         COMFYUI_STATE["is_starting"] = False
@@ -4829,6 +4925,7 @@ def stop_comfyui_core(sync_before_stop: bool = True) -> Tuple[bool, str]:
 def start_comfyui_core(unload_existing: bool = False, force_restart: bool = False) -> Tuple[bool, str]:
     global _COMFY_BG_SYNC_STARTED
     touch_activity()
+    _try_adopt_running_comfyui()
     if COMFYUI_STATE["is_starting"]:
         return True, "ComfyUI 正在部署启动中，请稍候..."
     if COMFYUI_STATE["is_running"] and COMFYUI_STATE.get("public_url") and not force_restart:
@@ -5065,6 +5162,11 @@ def start_comfyui_core(unload_existing: bool = False, force_restart: bool = Fals
         COMFYUI_STATE["public_url"] = cf_url_box[0]
         COMFYUI_STATE["is_running"] = True
         COMFYUI_STATE["progress"] = 1.0
+        try:
+            with open(_COMFY_STATE_FILE, "w", encoding="utf-8") as sf:
+                json.dump({"public_url": cf_url_box[0], "port": port}, sf)
+        except Exception:
+            pass
         _COMFY_STATUS_CACHE["ts"] = 0.0
         (cn_count, m_count, _), _ = _scan_comfyui_counts_and_outputs()
         ok_msg = f"ComfyUI 已就绪（{label} · 节点 {cn_count} 个 · 权重 {m_count} 个）"
@@ -8263,8 +8365,4 @@ if __name__ == "__main__":
         try:
             ui.block_thread()
         finally:
-            for name in ("tunnel_proc", "comfy_proc"):
-                child = COMFYUI_STATE.get(name)
-                if child is not None and child.poll() is None:
-                    child.terminate()
             ui.close()
