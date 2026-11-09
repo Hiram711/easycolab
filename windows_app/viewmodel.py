@@ -88,6 +88,7 @@ class EasyColabViewModel(QObject):
         # ── Persisted Settings (Windows defaults to Light Mode) ──
         self.dark_mode: bool = bool(self._settings.get("darkMode", False))
         self.mask_server_url: bool = bool(self._settings.get("maskServerURL", False))
+        self.admin_password = ""
         self.colab_server_url: str = str(self._settings.get("colabServerURL", ""))
         self.wake_gpu_choice: str = str(self._settings.get("wakeGPUChoiceV2", "G4"))
         if self.wake_gpu_choice not in {"G4", "H100", "A100", "L4", "T4"}:
@@ -100,7 +101,7 @@ class EasyColabViewModel(QObject):
         self.reasoning_effort: str = str(self._settings.get("reasoningEffort", "medium"))
         if self.reasoning_effort not in {"low", "medium", "high", "xhigh"}:
             self.reasoning_effort = "medium"
-        self.api_key_enabled: bool = bool(self._settings.get("apiKeyEnabled", True))
+        self.api_key_enabled = True
         self.api_access_key: str = str(self._settings.get("apiAccessKey", "")).strip()
         if not self.api_access_key:
             self.api_access_key = "sk-colab-" + secrets.token_hex(10)
@@ -395,6 +396,8 @@ class EasyColabViewModel(QObject):
     def set_colab_server_url(self, url: str) -> None:
         cleaned = (url or "").strip()
         if cleaned != self.colab_server_url:
+            self.admin_password = ""
+            self._remote_api_key_synced = False
             self.colab_server_url = cleaned
             self._save_setting("colabServerURL", cleaned)
             self.state_changed.emit()
@@ -442,6 +445,16 @@ class EasyColabViewModel(QObject):
             self.sync_context_length_to_colab()
 
     # ─── Computed Properties ─────────────────────────────────────────────────
+
+    def _admin_request(self, method: str, url: str, **kwargs):
+        base = urllib.parse.urlsplit(self.normalized_base_url)
+        target = urllib.parse.urlsplit(url)
+        if not self.admin_password:
+            raise ValueError("Enter the management password or use Wake & Deploy")
+        if target.scheme != "https" or target.netloc != base.netloc or target.username is not None:
+            raise ValueError("Management requests require the connected HTTPS origin")
+        return requests.request(method, url, auth=("easycolab", self.admin_password),
+                                allow_redirects=False, **kwargs)
 
     @property
     def normalized_base_url(self) -> str:
@@ -883,6 +896,7 @@ class EasyColabViewModel(QObject):
             self.state_changed.emit()
             return
 
+        password = secrets.token_urlsafe(32)
         gpu = self.wake_gpu_choice
         self.is_waking_colab = True
         self.status_message = tr(
@@ -914,7 +928,7 @@ class EasyColabViewModel(QObject):
                     encoding="utf-8",
                     errors="replace",
                     bufsize=1,
-                    env=self._bridge_env(),
+                    env={**self._bridge_env(), "EASYCOLAB_ADMIN_PASSWORD": password},
                     creationflags=WIN_NO_WINDOW,
                 )
                 assert proc.stdout is not None
@@ -927,6 +941,7 @@ class EasyColabViewModel(QObject):
 
                         def on_url(u: str = url) -> None:
                             self.set_colab_server_url(u)
+                            self.admin_password = password
                             self.append_console_line(
                                 tr(
                                     f"成功获取云端隧道地址: {self.masked_url(u)}",
@@ -1025,7 +1040,7 @@ class EasyColabViewModel(QObject):
         def worker() -> None:
             if base:
                 try:
-                    requests.post(f"{base}/minimax_api/disconnect", json={}, timeout=8)
+                    self._admin_request("POST", f"{base}/minimax_api/disconnect", json={}, timeout=8)
                 except Exception:
                     pass
             try:
@@ -1306,9 +1321,9 @@ class EasyColabViewModel(QObject):
             self._remote_idle_synced = True
             if d.get("idle_timeout_minutes") != self.idle_timeout_minutes:
                 self.update_idle_timeout_config(self.idle_timeout_minutes)
-        if self.api_key_enabled and not bool(d.get("api_key_enabled", False)) and not self._remote_api_key_synced:
+        if not d.get("api_key_configured", False) and not self._remote_api_key_synced:
             self._remote_api_key_synced = True
-            self.sync_api_key_to_colab()
+            self.sync_api_key_to_colab(initialize_only=True)
 
         self._record_telemetry_sample(force=not was_connected)
         self.state_changed.emit()
@@ -1333,7 +1348,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.get(
+                r = self._admin_request("GET",
                     f"{base}/minimax_api/status",
                     params={"model_id": target_model},
                     timeout=timeout_s,
@@ -1404,7 +1419,7 @@ class EasyColabViewModel(QObject):
 
             def worker() -> None:
                 try:
-                    r = requests.post(
+                    r = self._admin_request("POST",
                         f"{base}/minimax_api/select_model",
                         json={"model_id": model_id},
                         timeout=30,
@@ -1441,7 +1456,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(
+                r = self._admin_request("POST",
                     f"{base}/minimax_api/download_model",
                     json={"model_id": target_model, "hf_token": self.hf_token.strip()},
                     timeout=60,
@@ -1451,7 +1466,7 @@ class EasyColabViewModel(QObject):
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
                 while True:
                     time.sleep(1.5)
-                    sr = requests.get(
+                    sr = self._admin_request("GET",
                         f"{base}/minimax_api/status",
                         params={"model_id": target_model},
                         timeout=25,
@@ -1508,13 +1523,13 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/load_model", json=payload, timeout=60)
+                r = self._admin_request("POST", f"{base}/minimax_api/load_model", json=payload, timeout=60)
                 if r.status_code == 200:
                     data = r.json()
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
                 while True:
                     time.sleep(1.5)
-                    sr = requests.get(
+                    sr = self._admin_request("GET",
                         f"{base}/minimax_api/status",
                         params={"model_id": target_model},
                         timeout=25,
@@ -1559,7 +1574,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(
+                r = self._admin_request("POST",
                     f"{base}/minimax_api/unload_model",
                     json={"model_id": target},
                     timeout=20,
@@ -1593,7 +1608,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(
+                r = self._admin_request("POST",
                     f"{base}/minimax_api/config_idle",
                     json={"idle_timeout_minutes": minutes},
                     timeout=20,
@@ -1606,12 +1621,6 @@ class EasyColabViewModel(QObject):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def set_api_key_enabled(self, enabled: bool) -> None:
-        self.api_key_enabled = bool(enabled)
-        self._save_setting("apiKeyEnabled", self.api_key_enabled)
-        self.state_changed.emit()
-        self.sync_api_key_to_colab()
-
     def regenerate_api_key(self) -> None:
         self.api_access_key = "sk-colab-" + secrets.token_hex(10)
         self._save_setting("apiAccessKey", self.api_access_key)
@@ -1620,20 +1629,22 @@ class EasyColabViewModel(QObject):
         if self.is_connected:
             self.sync_api_key_to_colab()
 
-    def sync_api_key_to_colab(self, custom_key: Optional[str] = None) -> None:
+    def sync_api_key_to_colab(self, custom_key: Optional[str] = None, initialize_only: bool = False) -> None:
         if custom_key is not None:
+            if not custom_key.strip():
+                return
             self.api_access_key = custom_key.strip()
             self._save_setting("apiAccessKey", self.api_access_key)
         base = self.normalized_base_url
         if not self.is_connected or not base:
             return
-        payload_key = self.api_access_key.strip() if self.api_key_enabled else ""
+        payload_key = self.api_access_key.strip()
 
         def worker() -> None:
             try:
-                r = requests.post(
+                r = self._admin_request("POST",
                     f"{base}/minimax_api/config_api_key",
-                    json={"api_key": payload_key},
+                    json={"api_key": payload_key, "initialize_only": initialize_only},
                     timeout=20,
                 )
                 if r.status_code == 200:
@@ -1652,7 +1663,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(
+                r = self._admin_request("POST",
                     f"{base}/minimax_api/config_context",
                     json={"context_length": ctx_tokens},
                     timeout=20,
@@ -1782,7 +1793,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/generate", json=payload, timeout=30)
+                r = self._admin_request("POST", f"{base}/minimax_api/generate", json=payload, timeout=30)
                 if r.status_code != 200:
                     err_txt = r.text[:200]
                     raise RuntimeError(f"HTTP {r.status_code}: {err_txt}")
@@ -1831,7 +1842,7 @@ class EasyColabViewModel(QObject):
         save_dir = get_local_save_dir()
         safe_name = Path(filename).name
         dst = save_dir / safe_name
-        r = requests.get(full_url, timeout=180)
+        r = self._admin_request("GET", full_url, timeout=180)
         if r.status_code == 200 and r.content:
             dst.write_bytes(r.content)
             if elapsed is not None and elapsed > 0:
@@ -1858,7 +1869,7 @@ class EasyColabViewModel(QObject):
                 return
 
             try:
-                r = requests.get(f"{base}/minimax_api/job/{job_id}", timeout=30)
+                r = self._admin_request("GET", f"{base}/minimax_api/job/{job_id}", timeout=30)
                 if r.status_code == 404:
                     consecutive_404 += 1
                     if consecutive_404 >= 5:
@@ -2031,10 +2042,9 @@ class EasyColabViewModel(QObject):
                 daemon=True,
             ).start()
 
-    @staticmethod
-    def _safe_post_empty(url: str, timeout: int = 12) -> None:
+    def _safe_post_empty(self, url: str, timeout: int = 12) -> None:
         try:
-            requests.post(url, json={}, timeout=timeout)
+            self._admin_request("POST", url, json={}, timeout=timeout)
         except Exception:
             pass
 
@@ -2064,13 +2074,13 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/comfyui/start", json=payload, timeout=30)
+                r = self._admin_request("POST", f"{base}/minimax_api/comfyui/start", json=payload, timeout=30)
                 if r.status_code == 200:
                     data = r.json()
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
                 for _ in range(180):
                     time.sleep(1.5)
-                    sr = requests.get(
+                    sr = self._admin_request("GET",
                         f"{base}/minimax_api/status",
                         params={"model_id": self.selected_model_id},
                         timeout=22,
@@ -2110,7 +2120,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/comfyui/stop", json={}, timeout=35)
+                r = self._admin_request("POST", f"{base}/minimax_api/comfyui/stop", json={}, timeout=35)
                 if r.status_code == 200:
                     data = r.json()
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
@@ -2130,7 +2140,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/comfyui/free_vram", json={}, timeout=20)
+                r = self._admin_request("POST", f"{base}/minimax_api/comfyui/free_vram", json={}, timeout=20)
                 if r.status_code == 200:
                     data = r.json()
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
@@ -2156,7 +2166,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/comfyui/sync_drive", json={}, timeout=90)
+                r = self._admin_request("POST", f"{base}/minimax_api/comfyui/sync_drive", json={}, timeout=90)
                 if r.status_code == 200:
                     data = r.json()
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
@@ -2210,13 +2220,13 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/comfyui/download_weight", json=payload, timeout=25)
+                r = self._admin_request("POST", f"{base}/minimax_api/comfyui/download_weight", json=payload, timeout=25)
                 if r.status_code == 200:
                     data = r.json()
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
                 while True:
                     time.sleep(1.5)
-                    sr = requests.get(
+                    sr = self._admin_request("GET",
                         f"{base}/minimax_api/status",
                         params={"model_id": self.selected_model_id},
                         timeout=22,
@@ -2269,7 +2279,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.post(f"{base}/minimax_api/comfyui/install_pack", json=payload, timeout=30)
+                r = self._admin_request("POST", f"{base}/minimax_api/comfyui/install_pack", json=payload, timeout=30)
                 if r.status_code == 404:
                     self._dispatch_ui(
                         lambda: self._set_status_and_log(
@@ -2285,7 +2295,7 @@ class EasyColabViewModel(QObject):
                     self._dispatch_ui(lambda: self._apply_status_response(data, update_status_msg=True))
                 for _ in range(600):
                     time.sleep(1.5)
-                    sr = requests.get(
+                    sr = self._admin_request("GET",
                         f"{base}/minimax_api/status",
                         params={"model_id": self.selected_model_id},
                         timeout=22,
@@ -2337,7 +2347,7 @@ class EasyColabViewModel(QObject):
 
         def worker() -> None:
             try:
-                r = requests.get(url, timeout=180)
+                r = self._admin_request("GET", url, timeout=180)
                 if r.status_code == 200 and r.content:
                     dst.write_bytes(r.content)
 

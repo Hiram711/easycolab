@@ -14,7 +14,7 @@ PROJECT_ROOT = SPEC_DIR.parent
 ICON_PATH = SPEC_DIR / "assets" / "AppIcon.ico"
 
 datas = []
-for res_name in ("app.py", "colab_bridge.py", "EasyColab_Server.ipynb", "requirements.txt"):
+for res_name in ("app.py", "runtime_auth.py", "colab_bridge.py", "EasyColab_Server.ipynb", "requirements.txt"):
     src = PROJECT_ROOT / res_name
     if src.exists():
         datas.append((str(src), "."))
