@@ -83,6 +83,10 @@ a = Analysis(
     optimize=1,
 )
 
+# Qt uses the Windows system ICU ABI. An unrelated icuuc.dll found on the
+# build machine's PATH (e.g. Poppler's) can shadow System32 and break QtCore.
+a.binaries = [entry for entry in a.binaries if Path(entry[0]).name.lower() != "icuuc.dll"]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
