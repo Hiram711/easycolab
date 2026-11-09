@@ -1193,13 +1193,27 @@ class StudioViewModel: ObservableObject {
     @Published var colabServerURL: String = UserDefaults.standard.string(forKey: "colabServerURL") ?? "" {
         didSet {
             if oldValue != colabServerURL {
-                adminPassword = ""
+                adminPassword = Self.savedAdminPassword(for: colabServerURL)
                 remoteApiKeySynced = false
             }
             UserDefaults.standard.set(colabServerURL, forKey: "colabServerURL")
         }
     }
-    @Published var adminPassword = ""
+    private static func savedAdminPassword(for address: String) -> String {
+        let passwords = UserDefaults.standard.dictionary(forKey: "adminPasswordsByURL") as? [String: String]
+        return passwords?[address] ?? ""
+    }
+
+    @Published var adminPassword = StudioViewModel.savedAdminPassword(
+        for: UserDefaults.standard.string(forKey: "colabServerURL") ?? ""
+    ) {
+        didSet {
+            guard !colabServerURL.isEmpty, adminPassword != Self.savedAdminPassword(for: colabServerURL) else { return }
+            var passwords = UserDefaults.standard.dictionary(forKey: "adminPasswordsByURL") as? [String: String] ?? [:]
+            passwords[colabServerURL] = adminPassword.isEmpty ? nil : adminPassword
+            UserDefaults.standard.set(passwords, forKey: "adminPasswordsByURL")
+        }
+    }
     @Published var hfToken: String = ""
 
     // 默认初始文案（支持中英文双向无损切换）
@@ -5296,7 +5310,8 @@ struct MainStudioView: View {
         }
 
         HStack {
-            SecureField(L("管理密码（浏览器用户名 easycolab）", "Management password (browser user: easycolab)"), text: $vm.adminPassword)
+            Text(L("用户名：easycolab", "User: easycolab"))
+            SecureField(L("管理密码", "Management password"), text: $vm.adminPassword)
             Button(L("复制密码", "Copy password")) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(vm.adminPassword, forType: .string)

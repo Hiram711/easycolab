@@ -454,10 +454,11 @@ class EasyColabMainWindow(QMainWindow):
         card.body.addLayout(url_row)
 
         auth_row = QHBoxLayout()
+        auth_row.addWidget(QLabel(tr("用户名：easycolab", "User: easycolab")))
         self.admin_input = QLineEdit()
         self.admin_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.admin_input.setPlaceholderText(tr("管理密码（浏览器用户名 easycolab）", "Management password (browser user: easycolab)"))
-        self.admin_input.textEdited.connect(lambda value: setattr(self.vm, "admin_password", value))
+        self.admin_input.setPlaceholderText(tr("管理密码", "Management password"))
+        self.admin_input.textEdited.connect(self.vm.set_admin_password)
         auth_row.addWidget(self.admin_input)
         copy_admin = QPushButton(tr("复制密码", "Copy password"))
         copy_admin.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.vm.admin_password))

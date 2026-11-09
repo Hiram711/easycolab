@@ -108,7 +108,6 @@ class EasyColabViewModel(QObject):
         # ── Persisted Settings (Windows defaults to Light Mode) ──
         self.dark_mode: bool = bool(self._settings.get("darkMode", False))
         self.mask_server_url: bool = bool(self._settings.get("maskServerURL", False))
-        self.admin_password = ""
         self.colab_server_url: str = str(self._settings.get("colabServerURL", ""))
         self.wake_gpu_choice: str = str(self._settings.get("wakeGPUChoiceV2", "G4"))
         if self.wake_gpu_choice not in {"G4", "H100", "A100", "L4", "T4"}:
@@ -416,7 +415,6 @@ class EasyColabViewModel(QObject):
     def set_colab_server_url(self, url: str) -> None:
         cleaned = (url or "").strip()
         if cleaned != self.colab_server_url:
-            self.admin_password = ""
             self._remote_api_key_synced = False
             self.colab_server_url = cleaned
             self._save_setting("colabServerURL", cleaned)
@@ -466,11 +464,28 @@ class EasyColabViewModel(QObject):
 
     # ─── Computed Properties ─────────────────────────────────────────────────
 
+    @property
+    def admin_password(self) -> str:
+        return self._settings.get("adminPasswordsByURL", {}).get(self.normalized_base_url, "")
+
+    def set_admin_password(self, password: str) -> None:
+        address = self.normalized_base_url
+        if not address:
+            return
+        passwords = dict(self._settings.get("adminPasswordsByURL", {}))
+        if password:
+            passwords[address] = password
+        else:
+            passwords.pop(address, None)
+        self._save_setting("adminPasswordsByURL", passwords)
+
     def _admin_request(self, method: str, url: str, **kwargs):
-        if not self.admin_password:
+        address = self.normalized_base_url
+        password = self._settings.get("adminPasswordsByURL", {}).get(address, "")
+        if not password:
             raise ValueError("Enter the management password or use Wake & Deploy")
-        with _AdminSession(self.normalized_base_url) as session:
-            return session.request(method, url, auth=("easycolab", self.admin_password), **kwargs)
+        with _AdminSession(address) as session:
+            return session.request(method, url, auth=("easycolab", password), **kwargs)
 
     @property
     def normalized_base_url(self) -> str:
@@ -957,7 +972,7 @@ class EasyColabViewModel(QObject):
 
                         def on_url(u: str = url) -> None:
                             self.set_colab_server_url(u)
-                            self.admin_password = password
+                            self.set_admin_password(password)
                             self.append_console_line(
                                 tr(
                                     f"成功获取云端隧道地址: {self.masked_url(u)}",
