@@ -59,6 +59,26 @@ from windows_app.models import (
 WIN_NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
+class _AdminSession(requests.Session):
+    """Validate the prepared destination before each send, including redirects."""
+
+    def __init__(self, base_url: str):
+        super().__init__()
+        self.origin = self._https_origin(requests.Request("GET", base_url).prepare().url)
+
+    @staticmethod
+    def _https_origin(url: str):
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username is not None:
+            raise requests.exceptions.InvalidURL("Management requests require an HTTPS origin")
+        return parsed.hostname, 443 if parsed.port is None else parsed.port
+
+    def send(self, request, **kwargs):
+        if self._https_origin(request.url) != self.origin:
+            raise requests.exceptions.InvalidURL("Management request left the connected HTTPS origin")
+        return super().send(request, **kwargs)
+
+
 class EasyColabViewModel(QObject):
     """Central state & async controller emitting Qt signals onto the GUI thread."""
 
@@ -447,14 +467,10 @@ class EasyColabViewModel(QObject):
     # ─── Computed Properties ─────────────────────────────────────────────────
 
     def _admin_request(self, method: str, url: str, **kwargs):
-        base = urllib.parse.urlsplit(self.normalized_base_url)
-        target = urllib.parse.urlsplit(url)
         if not self.admin_password:
             raise ValueError("Enter the management password or use Wake & Deploy")
-        if target.scheme != "https" or target.netloc != base.netloc or target.username is not None:
-            raise ValueError("Management requests require the connected HTTPS origin")
-        return requests.request(method, url, auth=("easycolab", self.admin_password),
-                                allow_redirects=False, **kwargs)
+        with _AdminSession(self.normalized_base_url) as session:
+            return session.request(method, url, auth=("easycolab", self.admin_password), **kwargs)
 
     @property
     def normalized_base_url(self) -> str:

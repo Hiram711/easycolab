@@ -1148,10 +1148,23 @@ enum LocalRuntimePaths {
 
 // MARK: - 核心视图模型 (ViewModel)
 
-private final class NoAdminRedirect: NSObject, URLSessionTaskDelegate {
+private final class SameOriginAdminRedirect: NSObject, URLSessionTaskDelegate {
+    static func permits(_ target: URL?, from origin: URL?) -> Bool {
+        guard let target, let origin, let host = origin.host, !host.isEmpty,
+              target.scheme?.lowercased() == "https", origin.scheme?.lowercased() == "https",
+              target.user == nil, target.password == nil, origin.user == nil, origin.password == nil else { return false }
+        return target.host?.lowercased() == host.lowercased() && (target.port ?? 443) == (origin.port ?? 443)
+    }
+
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(nil)
+        guard let original = task.originalRequest, Self.permits(request.url, from: original.url) else {
+            completionHandler(nil)
+            return
+        }
+        var redirected = request
+        redirected.setValue(original.value(forHTTPHeaderField: "Authorization"), forHTTPHeaderField: "Authorization")
+        completionHandler(redirected)
     }
 }
 
@@ -1820,11 +1833,10 @@ class StudioViewModel: ObservableObject {
         } catch {}
     }
 
-    private let adminSession = URLSession(configuration: .ephemeral, delegate: NoAdminRedirect(), delegateQueue: nil)
+    private let adminSession = URLSession(configuration: .ephemeral, delegate: SameOriginAdminRedirect(), delegateQueue: nil)
 
     private func adminRequest(_ url: URL) throws -> URLRequest {
-        guard let base = URL(string: normalizedBaseURL), url.scheme == "https",
-              url.host == base.host, url.port == base.port, url.user == nil,
+        guard SameOriginAdminRedirect.permits(url, from: URL(string: normalizedBaseURL)),
               !adminPassword.isEmpty else { throw URLError(.userAuthenticationRequired) }
         var request = URLRequest(url: url)
         let encoded = Data("easycolab:\(adminPassword)".utf8).base64EncodedString()
