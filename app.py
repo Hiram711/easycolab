@@ -4815,21 +4815,28 @@ def _comfyui_periodic_drive_sync_loop():
                 sync_comfyui_to_drive_core(quiet=True)
 
 
-def _migrate_weak_manager_config(comfy_root: str, persist_root: str):
+def _ensure_comfyui_manager_tunnel_config(comfy_root: str, persist_root: str):
+    """允许通过 trycloudflare 公网隧道在 ComfyUI-Manager 内直接安装 Git 节点与模型，不受默认 normal 安全锁拦截"""
     cfg_targets = [
         os.path.join(persist_root, "user", "default", "ComfyUI-Manager", "config.ini"),
         os.path.join(persist_root, "user", "__manager", "config.ini"),
         os.path.join(comfy_root, "custom_nodes", "ComfyUI-Manager", "config.ini"),
     ]
-    for path in cfg_targets:
-        if not os.path.isfile(path):
-            continue
-        with open(path, encoding="utf-8") as stream:
-            original = stream.read()
-        updated = re.sub(r"(?im)^(\s*security_level\s*=\s*)weak(?=\s*$)", r"\g<1>normal", original)
-        if updated != original:
-            with open(path, "w", encoding="utf-8") as stream:
-                stream.write(updated)
+    for cfg_p in cfg_targets:
+        try:
+            os.makedirs(os.path.dirname(cfg_p), exist_ok=True)
+            if os.path.exists(cfg_p):
+                txt = open(cfg_p, "r", encoding="utf-8", errors="ignore").read()
+                if "security_level" in txt:
+                    new_txt = re.sub(r"security_level\s*=\s*\S+", "security_level = weak", txt)
+                    if new_txt != txt:
+                        with open(cfg_p, "w", encoding="utf-8") as wf:
+                            wf.write(new_txt)
+                    continue
+            with open(cfg_p, "w", encoding="utf-8") as wf:
+                wf.write("[default]\nsecurity_level = weak\npreview_method = auto\n")
+        except Exception:
+            pass
 
 
 def _install_persisted_custom_node_requirements(comfy_root: str):
@@ -5062,7 +5069,7 @@ def start_comfyui_core(unload_existing: bool = False, force_restart: bool = Fals
                 subprocess.run(["git", "clone", "--depth", "1", repo_url, target_node_dir], check=False)
 
         _ensure_easycolab_comfy_preset_helper(comfy_root, persist_root)
-        _migrate_weak_manager_config(comfy_root, persist_root)
+        _ensure_comfyui_manager_tunnel_config(comfy_root, persist_root)
 
         COMFYUI_STATE["progress"] = 0.70
         COMFYUI_STATE["status_message"] = "正在检查并安装已保存自定义节点的 Python 依赖包..."
